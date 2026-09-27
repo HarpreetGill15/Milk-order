@@ -1,0 +1,23 @@
+import { Route, Routes } from 'react-router-dom'
+import { AppShell } from './components/app-shell'
+import { CountPage } from './pages/count-page'
+import { HomePage } from './pages/home-page'
+import { ItemsPage } from './pages/items-page'
+import { OrderPage } from './pages/order-page'
+import { PrintPage } from './pages/print-page'
+import { SalesPage } from './pages/sales-page'
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/print/:orderDate" element={<PrintPage />} />
+      <Route element={<AppShell />}>
+        <Route index element={<HomePage />} />
+        <Route path="/count" element={<CountPage />} />
+        <Route path="/order" element={<OrderPage />} />
+        <Route path="/sales" element={<SalesPage />} />
+        <Route path="/items" element={<ItemsPage />} />
+      </Route>
+    </Routes>
+  )
+}
