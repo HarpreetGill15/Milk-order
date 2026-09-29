@@ -2,11 +2,11 @@ import { AlertTriangle, FileUp, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { Button, Card } from '../components/button'
-import { deleteSalesWeek, newItemFromName, saveItems, saveSalesWeek } from '../data/api'
+import { deleteSalesWeek, detectedFields, newItem, saveItems, saveSalesWeek } from '../data/api'
 import { useItems, useSalesWeeks } from '../data/hooks'
-import { DAY_SHORT, lastFullWeekStart, prettyDate, sundayOf } from '../lib/dates'
-import { normalizeName } from '../lib/item-detect'
-import { parseSalesLines, parseSalesTable, type ParsedSalesReport } from '../lib/sales-parse'
+import { addDaysIso, DAY_SHORT, lastFullWeekStart, prettyDate, sundayOf, todayIso } from '../lib/dates'
+import { nameLooksLikeCode, normalizeCode, normalizeName } from '../lib/item-detect'
+import { parseSalesCells, parseSalesLines, parseSalesTable, type ParsedSalesReport, type ParsedSalesRow } from '../lib/sales-parse'
 import { cn } from '../lib/utils'
 import type { Item, SalesWeek } from '../types'
 
@@ -15,8 +15,9 @@ type Match = 'new' | 'skip' | string
 
 async function parseFile(file: File): Promise<ParsedSalesReport> {
   if (/\.pdf$/i.test(file.name)) {
-    const { pdfToLines } = await import('../lib/pdf-text')
-    return parseSalesLines(await pdfToLines(file))
+    const { pdfToRows } = await import('../lib/pdf-text')
+    const rows = await pdfToRows(file)
+    return parseSalesCells(rows) ?? parseSalesLines(rows.map(cells => cells.map(cell => cell.text).join(' ')))
   }
   const workbook = XLSX.read(await file.arrayBuffer(), { cellDates: true })
   // Use the first sheet that actually has a Sun…Sat header.
@@ -40,10 +41,19 @@ export function SalesPage() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
 
-  const itemByName = useMemo(() => {
-    const map = new Map<string, Item>()
-    for (const item of items) [item.name, ...item.aliases].forEach(name => map.set(normalizeName(name), item))
-    return map
+  // Match by UPC, then vendor code, then name. An item whose name is just a code (left by an
+  // earlier import that grabbed the wrong column) matches by that code and gets repaired on save.
+  const findItem = useMemo(() => {
+    const byCode = new Map<string, Item>()
+    const byName = new Map<string, Item>()
+    for (const item of items) {
+      for (const code of [item.code, item.vendorCode ?? '', ...(nameLooksLikeCode(item.name) ? [item.name] : [])]) {
+        if (normalizeCode(code)) byCode.set(normalizeCode(code), item)
+      }
+      for (const name of [item.name, ...item.aliases]) byName.set(normalizeName(name), item)
+    }
+    return (row: ParsedSalesRow) =>
+      (row.upc && byCode.get(normalizeCode(row.upc))) || (row.vendorCode && byCode.get(normalizeCode(row.vendorCode))) || byName.get(normalizeName(row.name))
   }, [items])
 
   const onFile = async (file: File) => {
@@ -52,7 +62,7 @@ export function SalesPage() {
       const parsed = await parseFile(file)
       setReport(parsed)
       if (parsed.weekStart) setWeekStart(parsed.weekStart)
-      setMatches(parsed.rows.map(row => itemByName.get(normalizeName(row.name))?.id ?? 'new'))
+      setMatches(parsed.rows.map(row => findItem(row)?.id ?? 'new'))
     } catch (error) {
       setReport(null)
       setMessage(`Couldn't read that file: ${error instanceof Error ? error.message : String(error)}`)
@@ -66,7 +76,7 @@ export function SalesPage() {
     setBusy(true)
     try {
       const newItems: Item[] = []
-      const aliasUpdates = new Map<string, Item>()
+      const updates = new Map<string, Item>()
       let nextWalk = items.reduce((max, item) => Math.max(max, item.walkOrder), -1) + 1
       const rows: SalesWeek['rows'] = []
       report.rows.forEach((row, i) => {
@@ -74,13 +84,24 @@ export function SalesPage() {
         if (match === 'skip') return
         let itemId = match
         if (match === 'new') {
-          const item = newItemFromName(row.name, nextWalk++)
+          const item = newItem(row, nextWalk++)
           newItems.push(item)
           itemId = item.id
         } else {
-          const item = aliasUpdates.get(match) ?? items.find(candidate => candidate.id === match)
-          const known = item && [item.name, ...item.aliases].some(name => normalizeName(name) === normalizeName(row.name))
-          if (item && !known) aliasUpdates.set(item.id, { ...item, aliases: [...item.aliases, row.name] })
+          const original = updates.get(match) ?? items.find(candidate => candidate.id === match)
+          if (original) {
+            let item = { ...original, vendorCode: original.vendorCode ?? '', safetyStock: original.safetyStock ?? 0 }
+            // Fill in codes the item doesn't have yet.
+            if (!item.code && row.upc) item.code = row.upc
+            if (!item.vendorCode && row.vendorCode) item.vendorCode = row.vendorCode
+            if (nameLooksLikeCode(item.name)) {
+              // Repair an item named after a code: take the report name and re-detect brand/size.
+              item = { ...item, name: row.name, ...detectedFields(row.name) }
+            } else if (![item.name, ...item.aliases].some(name => normalizeName(name) === normalizeName(row.name))) {
+              item.aliases = [...item.aliases, row.name]
+            }
+            if (JSON.stringify(item) !== JSON.stringify(original)) updates.set(item.id, item)
+          }
         }
         const existing = rows.find(r => r.itemId === itemId)
         if (existing) {
@@ -91,15 +112,19 @@ export function SalesPage() {
           rows.push({ itemId, days: row.days, total: row.total ?? row.days.reduce((a, b) => a + b, 0) })
         }
       })
-      await saveItems([...newItems, ...aliasUpdates.values()])
-      await saveSalesWeek({ weekStart, fileName, uploadedAt: new Date().toISOString(), rows })
-      setMessage(`Saved week of ${prettyDate(weekStart)}: ${rows.length} items${newItems.length ? `, ${newItems.length} new items added` : ''}.`)
+      await saveItems([...newItems, ...updates.values()])
+      await saveSalesWeek({ weekStart, fileName, uploadedAt: new Date().toISOString(), rows, completeDays })
+      const partialNote = incompleteDays.length ? ` ${incompleteDays.map(day => DAY_SHORT[day]).join(', ')} not used yet (week not finished).` : ''
+      setMessage(`Saved week of ${prettyDate(weekStart)}: ${rows.length} items${newItems.length ? `, ${newItems.length} new` : ''}${updates.size ? `, ${updates.size} updated` : ''}.${partialNote}`)
       setReport(null)
     } finally {
       setBusy(false)
     }
   }
 
+  // A report pulled mid-week has partial numbers for today and zeros for the days after it.
+  const completeDays = [0, 1, 2, 3, 4, 5, 6].map(day => addDaysIso(weekStart, day) < todayIso())
+  const incompleteDays = completeDays.flatMap((complete, day) => (complete ? [] : [day]))
   const replacing = weeks.some(week => week.weekStart === weekStart)
   const mismatches = report?.rows.filter(row => row.mismatch).length ?? 0
   const newCount = matches.filter(match => match === 'new').length
@@ -108,7 +133,7 @@ export function SalesPage() {
     <div className="space-y-4">
       <Card className="space-y-3">
         <h1 className="text-lg font-bold">Upload 7-day sales report</h1>
-        <p className="text-sm text-slate-500">PDF or Excel with the item name, Sunday through Saturday, and Total. The first upload creates your item list.</p>
+        <p className="text-sm text-slate-500">The BDMS "Item Sales by Vendor 7 Days" report as PDF or Excel (or any file with item name, Sun … Sat and a total). The first upload creates your item list with UPCs and vendor codes.</p>
         <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 p-6 text-slate-600 hover:bg-slate-50">
           <FileUp className="h-5 w-5" /> {busy ? 'Reading…' : 'Choose a file (.pdf, .xlsx, .xls, .csv)'}
           <input type="file" className="hidden" accept=".pdf,.xlsx,.xls,.csv" onChange={event => { const file = event.target.files?.[0]; if (file) void onFile(file); event.target.value = '' }} />
@@ -127,6 +152,10 @@ export function SalesPage() {
             <Button className="ml-auto" disabled={busy || report.rows.length === 0} onClick={() => void save()}>Save week</Button>
           </div>
           {replacing && <p className="text-sm text-amber-700">A report for this week is already saved — saving will replace it.</p>}
+          {incompleteDays.length === 7 && <p className="flex items-center gap-2 text-sm text-red-700"><AlertTriangle className="h-4 w-4" />This week hasn't started yet — check the week date.</p>}
+          {incompleteDays.length > 0 && incompleteDays.length < 7 && (
+            <p className="flex items-center gap-2 text-sm text-amber-700"><AlertTriangle className="h-4 w-4" />This week isn't over yet: {incompleteDays.map(day => DAY_SHORT[day]).join(', ')} won't be used for forecasts. Upload last full week (Sun–Sat) for the best numbers.</p>
+          )}
           {report.warnings.map(warning => <p key={warning} className="text-sm text-red-600">{warning}</p>)}
           {mismatches > 0 && <p className="flex items-center gap-2 text-sm text-amber-700"><AlertTriangle className="h-4 w-4" />{mismatches} row{mismatches === 1 ? '' : 's'} where the days don't add up to the Total (highlighted) — check them against the report.</p>}
           <div className="overflow-x-auto">
@@ -137,8 +166,11 @@ export function SalesPage() {
               <tbody>
                 {report.rows.map((row, i) => (
                   <tr key={i} className={cn('border-t', row.mismatch && 'bg-amber-50')}>
-                    <td className="py-1.5 pr-2 font-medium">{row.name}</td>
-                    {row.days.map((value, day) => <td key={day} className="px-1 text-right tabular-nums">{value}</td>)}
+                    <td className="py-1.5 pr-2">
+                      <p className="font-medium">{row.name}</p>
+                      {(row.upc || row.vendorCode) && <p className="font-mono text-xs text-slate-400">{[row.upc, row.vendorCode].filter(Boolean).join(' · ')}</p>}
+                    </td>
+                    {row.days.map((value, day) => <td key={day} className={cn('px-1 text-right tabular-nums', value === 0 && 'text-slate-300', !completeDays[day] && 'bg-slate-100')}>{value}</td>)}
                     <td className="px-1 text-right font-semibold tabular-nums">{row.total ?? '—'}</td>
                     <td className="pl-3">
                       <select className="h-9 max-w-56 rounded-lg border px-1" value={matches[i]} onChange={event => setMatches(matches.map((m, j) => (j === i ? event.target.value : m)))}>
@@ -162,7 +194,7 @@ export function SalesPage() {
             {weeks.map(week => (
               <li key={week.weekStart} className="flex items-center gap-3 py-2 text-sm">
                 <span className="font-semibold">Week of {prettyDate(week.weekStart)}</span>
-                <span className="text-slate-500">{week.rows.length} items · {week.fileName}</span>
+                <span className="text-slate-500">{week.rows.length} items · {week.fileName}{week.completeDays?.includes(false) ? ` · partial (${week.completeDays.flatMap((c, d) => (c ? [] : [DAY_SHORT[d]])).join(', ')} not used)` : ''}</span>
                 <button className="ml-auto text-slate-400 hover:text-red-600" aria-label="Delete week" onClick={() => { if (confirm(`Delete the week of ${prettyDate(week.weekStart)}?`)) void deleteSalesWeek(week.weekStart) }}><Trash2 className="h-4 w-4" /></button>
               </li>
             ))}

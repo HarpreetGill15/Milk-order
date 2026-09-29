@@ -38,25 +38,21 @@ export function nextOrderDay(iso: string): string {
 }
 
 /**
- * Average units sold on `weekday` over the most recent FORECAST_WEEKS reports that include the
- * item. Weeks the item doesn't appear in are skipped rather than counted as zero, so a newly added
- * item isn't dragged down by weeks before it existed.
+ * Average units sold on `weekday` over the most recent FORECAST_WEEKS reports that have a complete
+ * number for it. Weeks the item doesn't appear in are skipped rather than counted as zero (so a new
+ * item isn't dragged down by weeks before it existed), and so are days a report was pulled before
+ * they were over.
  */
 export function forecastForDay(itemId: string, weekday: number, weeks: SalesWeek[]): number {
   const samples = [...weeks]
     .sort((a, b) => b.weekStart.localeCompare(a.weekStart))
+    .filter(week => week.completeDays?.[weekday] !== false)
     .map(week => week.rows.find(row => row.itemId === itemId))
     .filter(row => row !== undefined)
     .slice(0, FORECAST_WEEKS)
     .map(row => row.days[weekday])
   if (samples.length === 0) return 0
   return samples.reduce((sum, value) => sum + value, 0) / samples.length
-}
-
-export function bufferFor(item: Pick<Item, 'bufferPct' | 'bufferMin'>, forecast: number): number {
-  // No buffer for items that aren't selling — otherwise a dead item would order a full crate forever.
-  if (forecast <= 0) return 0
-  return Math.max(item.bufferMin, Math.ceil((forecast * item.bufferPct) / 100))
 }
 
 export function roundUpToStep(units: number, step: number): number {
@@ -72,7 +68,8 @@ export interface OrderSuggestion {
   stockAtDelivery: number
   /** Forecast sales across coversDays. */
   forecast: number
-  buffer: number
+  /** Units to still have in the cooler when the next truck comes. */
+  safetyStock: number
   suggested: number
   /** True for Friday's Monday order, which is based on a projected (not counted) stock level. */
   projected: boolean
@@ -82,13 +79,13 @@ export interface OrderSuggestion {
  * Suggested order quantities for one item for every delivery ordered on `orderDate`.
  *
  *   stock at delivery = count − forecast(order day)        (counted before 10am, so the whole day's sales still happen)
- *   order             = forecast(covered days) + buffer − stock at delivery, rounded up to orderStep
+ *   order             = forecast(covered days) + safety stock − stock at delivery, rounded up to orderStep
  *
  * Friday's Monday order has no count to work from, so its stock is projected from the Saturday
  * delivery: stock at Sat + Sat order − forecast(Sat, Sun). `finalOverrides[i]` is the hand-edited
  * quantity for delivery i, when there is one.
  */
-export function suggestOrders(item: Item, orderDate: string, countedUnits: number, weeks: SalesWeek[], finalOverrides: (number | undefined)[] = []): OrderSuggestion[] {
+export function suggestOrders(item: Pick<Item, 'id' | 'orderStep' | 'safetyStock'>, orderDate: string, countedUnits: number, weeks: SalesWeek[], finalOverrides: (number | undefined)[] = []): OrderSuggestion[] {
   const forecast = (day: number) => forecastForDay(item.id, day, weeks)
   let stock = Math.max(0, countedUnits - forecast(dayOfWeek(orderDate)))
   const results: OrderSuggestion[] = []
@@ -100,9 +97,10 @@ export function suggestOrders(item: Item, orderDate: string, countedUnits: numbe
       stock = Math.max(0, previous.stockAtDelivery + ordered - previous.forecast)
     }
     const coverForecast = plan.coversDays.reduce((sum, day) => sum + forecast(day), 0)
-    const buffer = bufferFor(item, coverForecast)
-    const suggested = roundUpToStep(coverForecast + buffer - stock, item.orderStep)
-    results.push({ ...plan, stockAtDelivery: stock, forecast: coverForecast, buffer, suggested, projected: index > 0 })
+    // Items saved before safety stock existed have no value yet.
+    const safetyStock = item.safetyStock ?? 0
+    const suggested = roundUpToStep(coverForecast + safetyStock - stock, item.orderStep)
+    results.push({ ...plan, stockAtDelivery: stock, forecast: coverForecast, safetyStock, suggested, projected: index > 0 })
   })
   return results
 }

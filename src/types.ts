@@ -1,8 +1,8 @@
 export type Size = '2L' | '1L' | '4L' | 'Cream' | 'Other'
 export const SIZES: Size[] = ['2L', '1L', '4L', 'Cream', 'Other']
 
-export type Brand = 'Lactantia' | 'Béatrice' | 'Other'
-export const BRANDS: Brand[] = ['Lactantia', 'Béatrice', 'Other']
+export type Brand = 'Lactantia' | 'Béatrice' | 'Selection' | 'Other'
+export const BRANDS: Brand[] = ['Lactantia', 'Béatrice', 'Selection', 'Other']
 
 export interface Item {
   id: string
@@ -14,13 +14,14 @@ export interface Item {
   size: Size
   /** Units per crate/case. Orders are always rounded up to a multiple of this; counts use it for crates → units. */
   orderStep: number
-  /** UPC or vendor code — printed as the barcode on the order sheet. */
+  /** UPC from the sales report (the order sheet can print this or the vendor code as the barcode). */
   code: string
+  /** Vendor / order code from the sales report. */
+  vendorCode: string
   /** Position when walking the cooler (lower = counted first). */
   walkOrder: number
-  /** Extra units on top of the forecast: max(bufferMin, ceil(forecast × bufferPct / 100)). */
-  bufferPct: number
-  bufferMin: number
+  /** Units that should always be left in the cooler when the next truck arrives, on top of forecast sales. */
+  safetyStock: number
   active: boolean
 }
 
@@ -33,6 +34,11 @@ export interface SalesWeek {
   fileName: string
   uploadedAt: string
   rows: { itemId: string; days: WeekDays; total: number }[]
+  /**
+   * Per weekday (0 = Sun): false when the report was pulled before that day was over, so its
+   * number is partial and must not be used for forecasting. Missing = all days complete.
+   */
+  completeDays?: boolean[]
 }
 
 export interface CountEntry {

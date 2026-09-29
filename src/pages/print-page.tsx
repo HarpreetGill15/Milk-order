@@ -16,6 +16,11 @@ export function PrintPage() {
   const { counts } = useCounts()
   const { orders } = useOrders()
   const [showZero, setShowZero] = useState(false)
+  const [barcodeField, setBarcodeField] = useState<'code' | 'vendorCode'>(() => (localStorage.getItem('milk-order:barcode') === 'vendorCode' ? 'vendorCode' : 'code'))
+  const chooseBarcode = (field: 'code' | 'vendorCode') => {
+    setBarcodeField(field)
+    try { localStorage.setItem('milk-order:barcode', field) } catch { /* not remembered in private mode */ }
+  }
   const count = counts.find(c => c.date === orderDate)
   const deliveries = useMemo(() => buildOrders(items, orderDate, count, weeks, orders), [items, orderDate, count, weeks, orders])
 
@@ -26,6 +31,13 @@ export function PrintPage() {
       <div className="no-print mb-6 flex flex-wrap items-center gap-3">
         <Link to="/order"><Button variant="secondary"><ArrowLeft className="h-4 w-4" /> Back</Button></Link>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={showZero} onChange={event => setShowZero(event.target.checked)} /> Show items with 0</label>
+        <label className="flex items-center gap-2 text-sm">
+          Barcode
+          <select className="h-9 rounded-lg border px-1" value={barcodeField} onChange={event => chooseBarcode(event.target.value as 'code' | 'vendorCode')}>
+            <option value="code">UPC</option>
+            <option value="vendorCode">Vendor code</option>
+          </select>
+        </label>
         <Button className="ml-auto" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
       </div>
       {deliveries.length === 0 && <p>{prettyDate(orderDate)} isn't an order day.</p>}
@@ -43,10 +55,13 @@ export function PrintPage() {
               return (
                 <div key={size} className="mb-4">
                   <h2 className="mb-1 bg-black px-2 py-0.5 text-sm font-bold uppercase text-white">{SIZE_LABEL[size]}</h2>
-                  {group.map(row => (
+                  {group.map(row => {
+                    // Fall back to the other code when the chosen one is missing.
+                    const code = (barcodeField === 'code' ? row.item.code || row.item.vendorCode : row.item.vendorCode || row.item.code) ?? ''
+                    return (
                     <div key={row.item.id} className="avoid-break flex items-center gap-4 border-b border-slate-300 py-2">
-                      <div className="w-56 shrink-0">
-                        {row.item.code ? <Barcode value={row.item.code} /> : <span className="text-sm font-semibold text-red-600">No UPC / vendor code — add on Items page</span>}
+                      <div className="w-64 shrink-0 overflow-hidden">
+                        {code ? <Barcode value={code} /> : <span className="text-sm font-semibold text-red-600">No UPC / vendor code — add on Items page</span>}
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold leading-tight">{row.item.name}</p>
@@ -54,7 +69,8 @@ export function PrintPage() {
                       </div>
                       <p className="w-20 text-right text-3xl font-bold tabular-nums">{row.final}</p>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )
             })}

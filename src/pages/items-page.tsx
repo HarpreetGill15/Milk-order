@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Button, Card, Chip } from '../components/button'
-import { deleteItem, newItemFromName, saveItem, saveItems } from '../data/api'
+import { deleteItem, newItemFromText, saveItem, saveItems } from '../data/api'
 import { useItems } from '../data/hooks'
 import { DEFAULT_ORDER_STEP } from '../lib/item-detect'
 import { SIZE_LABEL } from '../lib/item-filters'
@@ -12,7 +12,7 @@ export function ItemsPage() {
   const { items, loading } = useItems()
   const [newName, setNewName] = useState('')
   const [showInactive, setShowInactive] = useState(false)
-  const missingCodes = items.filter(item => item.active && !item.code).length
+  const missingCodes = items.filter(item => item.active && !item.code && !item.vendorCode).length
 
   const move = (index: number, delta: -1 | 1) => {
     const target = index + delta
@@ -24,7 +24,7 @@ export function ItemsPage() {
 
   const add = () => {
     if (!newName.trim()) return
-    void saveItem(newItemFromName(newName, items.reduce((max, item) => Math.max(max, item.walkOrder), -1) + 1))
+    void saveItem(newItemFromText(newName, items.reduce((max, item) => Math.max(max, item.walkOrder), -1) + 1))
     setNewName('')
   }
 
@@ -38,10 +38,10 @@ export function ItemsPage() {
           <h1 className="text-lg font-bold">Items ({items.length})</h1>
           <Chip className="ml-auto" active={showInactive} onClick={() => setShowInactive(!showInactive)}>Show inactive</Chip>
         </div>
-        <p className="text-sm text-slate-500">The list order here is the cooler walk order used when counting. Items are created automatically from sales reports.</p>
-        {missingCodes > 0 && <p className="text-sm text-amber-700">{missingCodes} active item{missingCodes === 1 ? ' has' : 's have'} no UPC / vendor code — those print without a barcode.</p>}
+        <p className="text-sm text-slate-500">The list order here is the cooler walk order used when counting. Items are created automatically from sales reports. <b>Safety stock</b> is how many units should still be in the cooler when the next truck arrives.</p>
+        {missingCodes > 0 && <p className="text-sm text-amber-700">{missingCodes} active item{missingCodes === 1 ? ' has' : 's have'} no UPC or vendor code — those print without a barcode.</p>}
         <form className="flex gap-2" onSubmit={event => { event.preventDefault(); add() }}>
-          <input className="h-11 min-w-0 flex-1 rounded-xl border px-3" placeholder="Add item by name, e.g. Lactantia 2L 2%" value={newName} onChange={event => setNewName(event.target.value)} />
+          <input className="h-11 min-w-0 flex-1 rounded-xl border px-3" placeholder="Add item, e.g. Lactantia 2L 2%" value={newName} onChange={event => setNewName(event.target.value)} />
           <Button type="submit" disabled={!newName.trim()}><Plus className="h-4 w-4" /> Add</Button>
         </form>
       </Card>
@@ -84,9 +84,9 @@ function ItemCard({ item, onUp, onDown }: { item: Item; onUp?: () => void; onDow
           <select className="h-10 w-full rounded-lg border px-1" value={item.size} onChange={event => setSize(event.target.value as Size)}>{SIZES.map(size => <option key={size} value={size}>{SIZE_LABEL[size]}</option>)}</select>
         </Field>
         <Field label="Per crate"><NumberField value={item.orderStep} min={1} onSave={orderStep => update({ orderStep })} /></Field>
-        <Field label="UPC / vendor code" className="col-span-2 sm:col-span-1"><TextField className="w-full font-mono" value={item.code} placeholder="none" onSave={code => update({ code: code.replace(/\s/g, '') })} /></Field>
-        <Field label="Buffer %"><NumberField value={item.bufferPct} onSave={bufferPct => update({ bufferPct })} /></Field>
-        <Field label="Buffer min"><NumberField value={item.bufferMin} onSave={bufferMin => update({ bufferMin })} /></Field>
+        <Field label="Safety stock (units)"><NumberField value={item.safetyStock ?? 0} onSave={safetyStock => update({ safetyStock })} /></Field>
+        <Field label="UPC"><TextField className="w-full font-mono" value={item.code} placeholder="none" onSave={code => update({ code: code.replace(/\s/g, '') })} /></Field>
+        <Field label="Vendor code"><TextField className="w-full font-mono" value={item.vendorCode ?? ''} placeholder="none" onSave={vendorCode => update({ vendorCode: vendorCode.replace(/\s/g, '') })} /></Field>
       </div>
       <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={item.active} onChange={event => update({ active: event.target.checked })} /> Active (counted and ordered)</label>
     </Card>

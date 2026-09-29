@@ -12,7 +12,8 @@ export function Barcode({ value, height = 48 }: { value: string; height?: number
 
   useEffect(() => {
     if (!svgRef.current) return
-    const options = { width: 2, height, fontSize: 14, margin: 4, background: '#ffffff', lineColor: '#000000' }
+    // Narrower bars for long codes so a 13-digit UPC fits its column on the order sheet.
+    const options = { width: value.length > 10 ? 1.6 : 2, height, fontSize: 14, margin: 4, background: '#ffffff', lineColor: '#000000' }
     const formats = /^\d{12}$/.test(value) ? ['UPC', 'CODE128'] : /^\d{13}$/.test(value) ? ['EAN13', 'CODE128'] : ['CODE128']
     for (const format of formats) {
       try {

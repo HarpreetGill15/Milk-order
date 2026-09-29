@@ -19,12 +19,14 @@ SheetJS (Excel), pdfjs (PDF), JsBarcode (order sheet barcodes), Vercel hosting.
 
 ```
 stock at delivery = count − forecast(order day)          (count is before 10am)
-order             = forecast(days covered) + buffer − stock at delivery
+order             = forecast(days covered) + safety stock − stock at delivery
                     → rounded UP to the item's crate size, shown in units
 ```
 
-- **Forecast**: average units sold on that weekday over the latest 4 uploaded weeks.
-- **Buffer**: `max(buffer min, forecast × buffer %)`, default 10% / min 2; none for items with no sales.
+- **Forecast**: average units sold on that weekday over the latest 4 uploaded weeks. Days that
+  weren't over yet when a report was uploaded (a mid-week report) are left out.
+- **Safety stock**: units that should still be in the cooler when the next truck arrives. Set per
+  item on the Items page or straight from the Safety column on the Order page. Defaults to 0.
 - **Crate sizes** (order steps): 2L = 9, 1L = 16, creams = 16, 4L bags = 4 — detected from the item
   name and editable per item.
 - **Friday's Monday order** has no count to work from: stock at Monday is projected as
@@ -40,10 +42,15 @@ Uncounted items are treated as 0 on hand and flagged on the order screen.
   (Lactantia, Béatrice) and size. Saves as you go.
 - **Order** (computer): each delivery with counted / forecast / suggested / final quantity. Edits
   are saved; the reset icon returns a line to the suggestion.
-- **Print**: order sheet grouped by size with a barcode (UPC or vendor code) and quantity per item.
-- **Sales**: upload the weekly 7-day report (PDF or Excel: item name, Sun…Sat, Total). The first
-  upload creates the item list. Rows whose days don't add up to the Total are highlighted.
-- **Items**: walk order, brand, size, crate size, UPC / vendor code, buffer, active.
+- **Print**: order sheet grouped by size with a barcode and quantity per item. Choose whether the
+  barcode is the UPC or the vendor code.
+- **Sales**: upload the BDMS "Item Sales by Vendor 7 Days" report (PDF or Excel), or any file with
+  item name, Sun…Sat and a total. PDFs are read by column position because BDMS leaves days with
+  no sales blank. UPC and vendor code are picked up from each line; items are matched by UPC, then
+  vendor code, then name. The first upload creates the item list. Rows whose days don't add up to
+  Unit Sold are highlighted.
+- **Items**: walk order, brand (Lactantia / Béatrice / Selection / Other), size, crate size,
+  safety stock, UPC, vendor code, active.
 
 ## Setup
 
