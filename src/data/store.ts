@@ -1,7 +1,7 @@
-import { collection, deleteDoc, doc, onSnapshot, setDoc, writeBatch } from 'firebase/firestore'
+import { collection, deleteDoc, deleteField, doc, FieldPath, onSnapshot, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
 import { db } from './firebase'
 
-export type CollectionName = 'items' | 'salesWeeks' | 'counts' | 'orders'
+export type CollectionName = 'items' | 'salesWeeks' | 'counts' | 'orders' | 'scheduleChanges' | 'holidaySettings' | 'events'
 type Doc = Record<string, unknown>
 
 /**
@@ -16,6 +16,8 @@ interface Store {
   merge(name: CollectionName, id: string, data: Doc): Promise<void>
   putMany(name: CollectionName, docs: { id: string; data: Doc }[]): Promise<void>
   remove(name: CollectionName, id: string): Promise<void>
+  /** Removes one nested field (e.g. a holiday setting) so the value falls back to its default. */
+  clearField(name: CollectionName, id: string, path: string[]): Promise<void>
 }
 
 const firestoreStore = (firestore: NonNullable<typeof db>): Store => ({
@@ -30,6 +32,8 @@ const firestoreStore = (firestore: NonNullable<typeof db>): Store => ({
     }
   },
   remove: (name, id) => deleteDoc(doc(firestore, name, id)),
+  // FieldPath, not a dotted string: holiday offsets like "-2" aren't valid in dotted paths.
+  clearField: (name, id, path) => updateDoc(doc(firestore, name, id), new FieldPath(...path), deleteField()).catch(() => undefined),
 })
 
 function deepMerge(target: Doc, source: Doc): Doc {
@@ -71,6 +75,11 @@ function localStore(): Store {
     merge: async (name, id, data) => write(name, docs => { docs[id] = deepMerge(docs[id] ?? {}, data) }),
     putMany: async (name, list) => write(name, docs => { list.forEach(({ id, data }) => { docs[id] = data }) }),
     remove: async (name, id) => write(name, docs => { delete docs[id] }),
+    clearField: async (name, id, path) => write(name, docs => {
+      let target = docs[id] as Doc | undefined
+      for (const key of path.slice(0, -1)) target = target?.[key] as Doc | undefined
+      if (target) delete target[path[path.length - 1]]
+    }),
   }
 }
 

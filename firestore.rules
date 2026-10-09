@@ -20,5 +20,18 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if request.resource.data.id == id && request.resource.data.lines is map;
     }
+    match /scheduleChanges/{date} {
+      allow read, delete: if true;
+      allow create, update: if request.resource.data.date == date && request.resource.data.delivery is bool;
+    }
+    match /holidaySettings/{id} {
+      allow read, delete: if true;
+      allow create, update: if request.resource.data.id == id && request.resource.data.days is map;
+    }
+    match /events/{id} {
+      allow read, delete: if true;
+      allow create, update: if request.resource.data.id == id && request.resource.data.name is string
+        && request.resource.data.start is string && request.resource.data.end is string;
+    }
   }
 }

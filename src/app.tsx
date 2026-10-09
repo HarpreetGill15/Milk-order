@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/app-shell'
+import { CalendarPage } from './pages/calendar-page'
 import { CountPage } from './pages/count-page'
 import { HomePage } from './pages/home-page'
 import { ItemsPage } from './pages/items-page'
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/order" element={<OrderPage />} />
         <Route path="/sales" element={<SalesPage />} />
         <Route path="/items" element={<ItemsPage />} />
+        <Route path="/calendar" element={<CalendarPage />} />
       </Route>
     </Routes>
   )

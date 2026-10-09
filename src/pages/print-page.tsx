@@ -3,17 +3,15 @@ import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Barcode } from '../components/barcode'
 import { Button } from '../components/button'
-import { useCounts, useItems, useOrders, useSalesWeeks } from '../data/hooks'
-import { DAY_SHORT, prettyDate } from '../lib/dates'
+import { useOrders, usePlanner } from '../data/hooks'
+import { prettyDate } from '../lib/dates'
 import { SIZE_LABEL } from '../lib/item-filters'
 import { buildOrders } from '../lib/order-build'
 import { SIZES } from '../types'
 
 export function PrintPage() {
   const { orderDate = '' } = useParams()
-  const { items, loading } = useItems()
-  const { weeks } = useSalesWeeks()
-  const { counts } = useCounts()
+  const { planner, items, counts, loading } = usePlanner()
   const { orders } = useOrders()
   const [showZero, setShowZero] = useState(false)
   const [barcodeField, setBarcodeField] = useState<'code' | 'vendorCode'>(() => (localStorage.getItem('milk-order:barcode') === 'vendorCode' ? 'vendorCode' : 'code'))
@@ -22,7 +20,7 @@ export function PrintPage() {
     try { localStorage.setItem('milk-order:barcode', field) } catch { /* not remembered in private mode */ }
   }
   const count = counts.find(c => c.date === orderDate)
-  const deliveries = useMemo(() => buildOrders(items, orderDate, count, weeks, orders), [items, orderDate, count, weeks, orders])
+  const deliveries = useMemo(() => buildOrders(items, orderDate, count, planner, orders), [items, orderDate, count, planner, orders])
 
   if (loading) return <p className="p-6 text-slate-500">Loading…</p>
 
@@ -47,7 +45,7 @@ export function PrintPage() {
           <section key={delivery.deliveryDate} className={index > 0 ? 'print-break pt-6' : ''}>
             <header className="mb-3 border-b-2 border-black pb-2">
               <h1 className="text-2xl font-bold">Milk order — delivery {prettyDate(delivery.deliveryDate)}</h1>
-              <p className="text-sm">Ordered {prettyDate(orderDate)} · covers {delivery.coversDays.map(day => DAY_SHORT[day]).join(' + ')} · {rows.length} items · {rows.reduce((sum, row) => sum + row.final, 0)} units</p>
+              <p className="text-sm">Ordered {prettyDate(orderDate)} · covers {prettyDate(delivery.coversDates[0])}{delivery.coversDates.length > 1 ? ` – ${prettyDate(delivery.coversDates[delivery.coversDates.length - 1])}` : ''} · {rows.length} items · {rows.reduce((sum, row) => sum + row.final, 0)} units</p>
             </header>
             {SIZES.map(size => {
               const group = rows.filter(row => row.item.size === size)

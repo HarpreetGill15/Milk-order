@@ -8,30 +8,42 @@ SheetJS (Excel), pdfjs (PDF), JsBarcode (order sheet barcodes), Vercel hosting.
 
 ## Order schedule
 
-| Order day (morning) | Delivery | Delivery covers |
-|---|---|---|
-| Tuesday  | Wednesday | Wed + Thu |
-| Thursday | Friday    | Fri |
-| Friday   | Saturday  | Sat + Sun |
-| Friday   | Monday    | Mon + Tue |
+Regular deliveries, each ordered the morning before (Monday's on Friday):
 
-## Order math (`src/lib/order-math.ts`)
+| Order day (morning) | Delivery |
+|---|---|
+| Tuesday  | Wednesday |
+| Thursday | Friday    |
+| Friday   | Saturday and Monday |
+
+Each delivery has to last until the next one arrives. On the **Calendar** page you can remove a
+delivery, add one on another day, or change which day it's ordered (e.g. Thanksgiving week: no
+Saturday delivery, a Sunday delivery ordered Friday). Regular deliveries on a closed holiday drop
+off automatically.
+
+## Order math (`src/lib/order-math.ts`, `src/lib/forecast.ts`)
 
 ```
-stock at delivery = count − forecast(order day)          (count is before 10am)
-order             = forecast(days covered) + safety stock − stock at delivery
+stock at delivery = count − forecast(order day … day before delivery)   (count is before 10am)
+order             = forecast(days until the next delivery) + safety stock − stock at delivery
                     → rounded UP to the item's crate size, shown in units
 ```
 
-- **Forecast**: average units sold on that weekday over the latest 4 uploaded weeks. Days that
-  weren't over yet when a report was uploaded (a mid-week report) are left out.
+- **Normal-day forecast**: the same weekday from the nearest 8 uploaded weeks (within 16 weeks),
+  nearer weeks weighted more. With 5+ weeks the highest and lowest are dropped. Holiday/event
+  days, days the morning count showed no stock, and days not over when a report was pulled are
+  left out.
+- **Holidays** (`src/lib/holidays.ts`): Ontario holidays with dates worked out each year. Closed
+  days (Retail Business Holidays Act by default; switchable per holiday) forecast 0. The days around
+  each holiday get a % boost for milk and for cream. Boosts start as guesses; when past holiday
+  weeks (with a few normal weeks around them) are uploaded, the boost actually seen is learned and
+  used instead. A value typed on the Calendar page overrides both. Special events (promos etc.)
+  can be added with their own boosts or as closed days.
 - **Safety stock**: units that should still be in the cooler when the next truck arrives. Set per
   item on the Items page or straight from the Safety column on the Order page. Defaults to 0.
-- **Crate sizes** (order steps): 2L = 9, 1L = 16, creams = 16, 4L bags = 4 — detected from the item
-  name and editable per item.
-- **Friday's Monday order** has no count to work from: stock at Monday is projected as
-  `stock at Sat + Saturday order − forecast(Sat + Sun)`. If the Saturday quantity is edited by hand,
-  the Monday projection uses the edited number.
+- **Two deliveries ordered the same day** (Friday's Saturday + Monday): the later one's stock is
+  projected from the earlier one (stock then + what's being ordered − forecast in between). If the
+  earlier quantity is edited by hand, the projection uses the edited number.
 
 Uncounted items are treated as 0 on hand and flagged on the order screen.
 
@@ -44,7 +56,9 @@ Uncounted items are treated as 0 on hand and flagged on the order screen.
   are saved; the reset icon returns a line to the suggestion.
 - **Print**: order sheet grouped by size with a barcode and quantity per item. Choose whether the
   barcode is the UPC or the vendor code.
-- **Sales**: upload the BDMS "Item Sales by Vendor 7 Days" report (PDF or Excel), or any file with
+- **Calendar**: delivery days for the next 3 weeks (add / remove / change order day), Ontario
+  holidays (open/closed, milk and cream boosts and where each number came from), special events.
+- **Sales**: upload BDMS "Item Sales by Vendor 7 Days" reports (PDF or Excel, many weeks at once), or any file with
   item name, Sun…Sat and a total. PDFs are read by column position because BDMS leaves days with
   no sales blank. UPC and vendor code are picked up from each line; items are matched by UPC, then
   vendor code, then name. The first upload creates the item list. Rows whose days don't add up to

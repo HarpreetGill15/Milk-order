@@ -1,4 +1,4 @@
-import { ClipboardList, Home, Milk, ShoppingCart, Upload } from 'lucide-react'
+import { CalendarDays, ClipboardList, Home, Milk, ShoppingCart, Upload } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { usingLocalStorage } from '../data/store'
 import { cn } from '../lib/utils'
@@ -9,6 +9,7 @@ const NAV = [
   { to: '/order', label: 'Order', icon: ShoppingCart },
   { to: '/sales', label: 'Sales', icon: Upload },
   { to: '/items', label: 'Items', icon: Milk },
+  { to: '/calendar', label: 'Calendar', icon: CalendarDays },
 ]
 
 export function AppShell() {
@@ -30,9 +31,9 @@ export function AppShell() {
       <main className="mx-auto max-w-5xl px-4 py-4">
         <Outlet />
       </main>
-      <nav className="no-print fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t bg-white md:hidden">
+      <nav className="no-print fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t bg-white md:hidden">
         {NAV.map(({ to, label, icon: Icon }) => (
-          <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => cn('flex flex-col items-center gap-0.5 py-2 text-xs font-medium', isActive ? 'text-brand-600' : 'text-slate-500')}>
+          <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => cn('flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium', isActive ? 'text-brand-600' : 'text-slate-500')}>
             <Icon className="h-5 w-5" />{label}
           </NavLink>
         ))}

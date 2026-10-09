@@ -3,29 +3,24 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Card } from '../components/button'
 import { saveItem, saveOrder } from '../data/api'
-import { useCounts, useItems, useOrders, useSalesWeeks } from '../data/hooks'
-import { addDaysIso, DAY_SHORT, prettyDate, todayIso } from '../lib/dates'
+import { DayNotes } from '../components/day-notes'
+import { useOrders, usePlanner } from '../data/hooks'
+import { addDaysIso, prettyDate, todayIso } from '../lib/dates'
 import { SIZE_LABEL } from '../lib/item-filters'
 import { buildOrders, type DeliveryOrder, type OrderRow } from '../lib/order-build'
-import { isOrderDay, nextOrderDay } from '../lib/order-math'
+import type { Planner } from '../lib/planner'
 import { cn } from '../lib/utils'
 import { SIZES } from '../types'
 
-function previousOrderDay(iso: string) {
-  let date = addDaysIso(iso, -1)
-  while (!isOrderDay(date)) date = addDaysIso(date, -1)
-  return date
-}
-
 export function OrderPage() {
-  const { items, loading } = useItems()
-  const { weeks } = useSalesWeeks()
-  const { counts } = useCounts()
+  const { planner, items, weeks, counts, loading } = usePlanner()
   const { orders } = useOrders()
-  const [orderDate, setOrderDate] = useState(() => nextOrderDay(todayIso()))
+  const [chosenDate, setOrderDate] = useState<string | null>(null)
+  // Until the user picks a date, follow the schedule (it can change once schedule edits load).
+  const orderDate = chosenDate ?? planner.schedule.nextOrderDay(todayIso())
 
   const count = counts.find(c => c.date === orderDate)
-  const deliveries = useMemo(() => buildOrders(items, orderDate, count, weeks, orders), [items, orderDate, count, weeks, orders])
+  const deliveries = useMemo(() => buildOrders(items, orderDate, count, planner, orders), [items, orderDate, count, planner, orders])
   const uncounted = items.filter(item => item.active && !count?.entries[item.id]).length
 
   const setFinal = (delivery: DeliveryOrder, row: OrderRow, value: number | null) => {
@@ -42,20 +37,22 @@ export function OrderPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" aria-label="Previous order day" onClick={() => setOrderDate(previousOrderDay(orderDate))}><ChevronLeft className="h-5 w-5" /></Button>
+        <Button variant="secondary" aria-label="Previous order day" onClick={() => setOrderDate(planner.schedule.previousOrderDay(orderDate))}><ChevronLeft className="h-5 w-5" /></Button>
         <div className="text-center">
           <p className="text-xs uppercase text-slate-500">Order placed</p>
           <p className="text-lg font-bold">{prettyDate(orderDate)}</p>
         </div>
-        <Button variant="secondary" aria-label="Next order day" onClick={() => setOrderDate(nextOrderDay(addDaysIso(orderDate, 1)))}><ChevronRight className="h-5 w-5" /></Button>
+        <Button variant="secondary" aria-label="Next order day" onClick={() => setOrderDate(planner.schedule.nextOrderDay(addDaysIso(orderDate, 1)))}><ChevronRight className="h-5 w-5" /></Button>
         <Link to={`/print/${orderDate}`} className="ml-auto"><Button><Printer className="h-4 w-4" /> Print order</Button></Link>
       </div>
+      <p className="text-sm text-slate-500">Delivery days changed for a holiday? Set them on the <Link className="font-semibold text-brand-600" to="/calendar">Calendar</Link> page.</p>
 
       {weeks.length === 0 && <Warning>No sales reports uploaded yet, so every forecast is 0. <Link className="font-semibold underline" to="/sales">Upload one</Link>.</Warning>}
       {!count && <Warning>No count for {prettyDate(orderDate)} yet. Suggestions assume 0 on hand until the count is done on the phone.</Warning>}
       {count && uncounted > 0 && <Warning>{uncounted} item{uncounted === 1 ? '' : 's'} not counted — treated as 0 on hand (marked below).</Warning>}
 
-      {deliveries.map(delivery => <DeliveryTable key={delivery.deliveryDate} delivery={delivery} onSetFinal={(row, value) => setFinal(delivery, row, value)} />)}
+      {deliveries.length === 0 && <Warning>No deliveries are ordered on {prettyDate(orderDate)}.</Warning>}
+      {deliveries.map(delivery => <DeliveryTable key={delivery.deliveryDate} delivery={delivery} planner={planner} onSetFinal={(row, value) => setFinal(delivery, row, value)} />)}
     </div>
   )
 }
@@ -64,16 +61,27 @@ function Warning({ children }: { children: React.ReactNode }) {
   return <p className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{children}</span></p>
 }
 
-function DeliveryTable({ delivery, onSetFinal }: { delivery: DeliveryOrder; onSetFinal: (row: OrderRow, value: number | null) => void }) {
+function DeliveryTable({ delivery, planner, onSetFinal }: { delivery: DeliveryOrder; planner: Planner; onSetFinal: (row: OrderRow, value: number | null) => void }) {
   const total = delivery.rows.reduce((sum, row) => sum + row.final, 0)
   return (
     <Card className="space-y-3 overflow-hidden p-0">
-      <div className="border-b bg-slate-50 px-4 py-3">
-        <h2 className="text-lg font-bold">Delivery {prettyDate(delivery.deliveryDate)}</h2>
+      <div className="space-y-2 border-b bg-slate-50 px-4 py-3">
+        <h2 className="text-lg font-bold">
+          Delivery {prettyDate(delivery.deliveryDate)}
+          {delivery.changed && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">changed schedule</span>}
+        </h2>
         <p className="text-sm text-slate-500">
-          Covers {delivery.coversDays.map(day => DAY_SHORT[day]).join(' + ')} · {total} units total
-          {delivery.projected && <span className="ml-1 font-medium text-amber-700">· stock is projected from the Saturday order (no count before Monday)</span>}
+          Lasts until the next delivery · {total} units total
+          {delivery.projected && <span className="ml-1 font-medium text-amber-700">· stock is projected from the earlier delivery (no count in between)</span>}
         </p>
+        <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          {delivery.coversDates.map(date => (
+            <li key={date} className="flex flex-wrap items-center gap-1">
+              <span className="font-medium">{prettyDate(date)}</span>
+              <DayNotes marks={planner.calendar.marks(date)} />
+            </li>
+          ))}
+        </ul>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
