@@ -66,10 +66,18 @@ Uncounted items are treated as 0 on hand and flagged on the order screen.
 - **Items**: walk order, brand (Lactantia / Béatrice / Selection / Other), size, crate size,
   safety stock, UPC, vendor code, active.
 
-## Reading reports from photos (`api/read-report.ts`)
+## Reading reports from photos
 
 While the app can't be opened on the store computer, the Sales page can read the BDMS screens from
-photos: the 7-day sales report and the Order Sheet by Vendor. Photos are taken with the camera
+photos: the 7-day sales report and the Order Sheet by Vendor. Two ways:
+
+**Claude app (free with a Claude plan, `src/lib/pasted-report.ts`).** Tap *Copy instructions*,
+start a new chat in the Claude app, attach the photos, paste the instructions and send. Claude
+replies with the rows as JSON; copy the reply, paste it back into Milk Order and tap *Use this
+data*. The whole reply can be pasted — the app finds the data in it. From there it's the same
+preview (rows that don't add up are highlighted) and the same Order Sheet item list as below.
+
+**Automatic (`api/read-report.ts`, needs an API key, billed per photo).** Photos are taken with the camera
 inside the app (they aren't saved to the phone's gallery) or chosen from the phone. Each photo is
 shrunk to 2576 px on the long side and sent to a Vercel function that asks Claude
 (`claude-opus-5-5`, structured JSON output) to transcribe the rows, putting each number under its

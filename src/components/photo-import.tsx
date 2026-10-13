@@ -1,8 +1,9 @@
-import { Camera, ImagePlus, Loader2, ScanText, Trash2 } from 'lucide-react'
+import { Camera, ClipboardCopy, ClipboardPaste, ExternalLink, ImagePlus, Loader2, ScanText, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { saveItems } from '../data/api'
 import { prepareImage } from '../lib/image'
 import { newItem } from '../lib/items'
+import { CLAUDE_APP_PROMPT, parsePastedReadings } from '../lib/pasted-report'
 import { catalogueFromPhotos, salesFromPhotos, type PhotoReading } from '../lib/photo-report'
 import type { ParsedSalesReport } from '../lib/sales-parse'
 import { cn } from '../lib/utils'
@@ -21,7 +22,10 @@ interface Photo {
 }
 
 const PIN_KEY = 'milk-order:photo-pin'
+const MODE_KEY = 'milk-order:photo-mode'
 const readPin = () => { try { return localStorage.getItem(PIN_KEY) ?? '' } catch { return '' } }
+type Mode = 'app' | 'api'
+const readMode = (): Mode => { try { return localStorage.getItem(MODE_KEY) === 'api' ? 'api' : 'app' } catch { return 'app' } }
 const TYPE_LABEL: Record<PhotoReading['report_type'], string> = { sales_7_days: '7-day sales', order_sheet: 'Order sheet', other: 'Not a report' }
 
 async function readPhoto(photo: Photo, pin: string): Promise<PhotoReading> {
@@ -39,9 +43,14 @@ let nextId = 1
 
 /**
  * Stand-in for file uploads while the app can't be opened on the store computer: photograph the
- * BDMS screen (7-day sales report and/or Order Sheet) and Claude reads the rows off the photos.
+ * BDMS screen (7-day sales report and/or Order Sheet) and Claude reads the rows off the photos —
+ * either in the Claude app (free with a Claude plan: copy instructions, paste the reply back) or
+ * automatically through /api/read-report (needs an API key in Vercel, billed per photo).
  */
 export function PhotoImport({ items, onSales }: { items: Item[]; onSales: (report: ParsedSalesReport, label: string) => void }) {
+  const [mode, setMode] = useState<Mode>(readMode)
+  const [pasted, setPasted] = useState('')
+  const [copied, setCopied] = useState(false)
   const [photos, setPhotos] = useState<Photo[]>([])
   const [camera, setCamera] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -82,15 +91,46 @@ export function PhotoImport({ items, onSales }: { items: Item[]; onSales: (repor
     }
     await Promise.all([worker(), worker(), worker()])
     setBusy(false)
+    showResults(results, 'photo')
+  }
 
+  /** Sales rows go to the week preview below; Order Sheet items to the add-items list. */
+  const showResults = (results: PhotoReading[], source: string) => {
     const sales = salesFromPhotos(results)
     if (sales) {
-      onSales(sales, `${results.filter(r => r.report_type === 'sales_7_days').length} photo(s)`)
+      onSales(sales, `${results.filter(r => r.report_type === 'sales_7_days').length} ${source}${results.length === 1 ? '' : 's'}`)
       setMessage(`Read ${sales.rows.length} sales rows — they're below. Check them against the screen (rows that don't add up are highlighted), then tap Save week.`)
     }
     setReadings(results)
     setTicked({})
-    if (!sales && catalogueFromPhotos(results, items).length === 0 && results.length > 0) setMessage('No report rows were found in these photos.')
+    if (!sales && catalogueFromPhotos(results, items).length === 0 && results.length > 0) setMessage('No report rows were found.')
+  }
+
+  const switchMode = (next: Mode) => {
+    setMode(next)
+    setMessage('')
+    try { localStorage.setItem(MODE_KEY, next) } catch { /* not remembered */ }
+  }
+
+  const copyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(CLAUDE_APP_PROMPT)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 3000)
+    } catch {
+      setMessage("Couldn't copy automatically — open \"Show the instructions\" below and copy them by hand.")
+    }
+  }
+
+  const pasteFromClipboard = async () => {
+    try { setPasted(await navigator.clipboard.readText()) } catch { setMessage('Long-press the box below and choose Paste.') }
+  }
+
+  const usePasted = () => {
+    const { readings: results, error } = parsePastedReadings(pasted)
+    if (error) { setMessage(error); return }
+    showResults(results, 'reply')
+    setPasted('')
   }
 
   const addItems = async () => {
@@ -106,21 +146,63 @@ export function PhotoImport({ items, onSales }: { items: Item[]; onSales: (repor
   return (
     <Card className="space-y-3">
       <div>
-        <h2 className="text-lg font-bold">Read from photos</h2>
+        <h2 className="text-lg font-bold">Read reports from photos</h2>
         <p className="text-sm text-slate-500">
-          Can't upload the file from the store computer? Photograph the BDMS screen — the 7-day sales report and/or the Order Sheet.
-          Fill the screen with the table and take one photo per screenful. Photos aren't saved to your phone.
+          Can't upload the file from the store computer? Photograph the BDMS screen — the 7-day sales report and/or the Order Sheet —
+          one photo per screenful, with the whole table in view.
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={() => setCamera(true)}><Camera className="h-4 w-4" /> Take photos</Button>
-        <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
-          <ImagePlus className="h-4 w-4" /> Choose pictures
-          <input type="file" accept="image/*" multiple className="hidden" onChange={event => { [...(event.target.files ?? [])].forEach(file => void addBlob(file)); event.target.value = '' }} />
-        </label>
+      <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-sm font-semibold">
+        <button className={cn('rounded-lg px-2 py-2', mode === 'app' ? 'bg-white shadow' : 'text-slate-500')} onClick={() => switchMode('app')}>Claude app (free)</button>
+        <button className={cn('rounded-lg px-2 py-2', mode === 'api' ? 'bg-white shadow' : 'text-slate-500')} onClick={() => switchMode('api')}>Automatic (API key)</button>
       </div>
 
-      {photos.length > 0 && (
+      {mode === 'app' && (
+        <ol className="space-y-3 text-sm">
+          <li className="space-y-2">
+            <p><b>1.</b> Copy the instructions.</p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => void copyPrompt()}><ClipboardCopy className="h-4 w-4" /> {copied ? 'Copied!' : 'Copy instructions'}</Button>
+              <a href="https://claude.ai/new" target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
+                <ExternalLink className="h-4 w-4" /> Open Claude
+              </a>
+            </div>
+            <details className="text-xs text-slate-500">
+              <summary className="cursor-pointer">Show the instructions</summary>
+              <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-2">{CLAUDE_APP_PROMPT}</pre>
+            </details>
+          </li>
+          <li><b>2.</b> In a new Claude chat, attach the photos of the screen (the + button, then camera or photos), paste the instructions and send.</li>
+          <li className="space-y-2">
+            <p><b>3.</b> When Claude answers, tap <b>Copy</b> on its reply (or on the code block), come back here and paste it.</p>
+            <textarea
+              className="h-28 w-full rounded-xl border p-2 font-mono text-xs"
+              placeholder="Paste Claude's reply here"
+              value={pasted}
+              onChange={event => setPasted(event.target.value)}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => void pasteFromClipboard()}><ClipboardPaste className="h-4 w-4" /> Paste</Button>
+              <Button disabled={!pasted.trim()} onClick={usePasted}><ScanText className="h-4 w-4" /> Use this data</Button>
+            </div>
+          </li>
+        </ol>
+      )}
+
+      {mode === 'api' && (
+        <>
+          <p className="text-xs text-slate-500">Reads the photos here with no copy and paste. Needs ANTHROPIC_API_KEY set in Vercel and is billed per photo. Photos aren't saved to your phone.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setCamera(true)}><Camera className="h-4 w-4" /> Take photos</Button>
+            <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
+              <ImagePlus className="h-4 w-4" /> Choose pictures
+              <input type="file" accept="image/*" multiple className="hidden" onChange={event => { [...(event.target.files ?? [])].forEach(file => void addBlob(file)); event.target.value = '' }} />
+            </label>
+          </div>
+        </>
+      )}
+
+      {mode === 'api' && photos.length > 0 && (
         <>
           <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5">
             {photos.map(photo => (
