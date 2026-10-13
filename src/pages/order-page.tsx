@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronLeft, ChevronRight, Printer, RotateCcw } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, ChevronRight, Printer, RotateCcw, ScanBarcode } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Card } from '../components/button'
@@ -43,7 +43,10 @@ export function OrderPage() {
           <p className="text-lg font-bold">{prettyDate(orderDate)}</p>
         </div>
         <Button variant="secondary" aria-label="Next order day" onClick={() => setOrderDate(planner.schedule.nextOrderDay(addDaysIso(orderDate, 1)))}><ChevronRight className="h-5 w-5" /></Button>
-        <Link to={`/print/${orderDate}`} className="ml-auto"><Button><Printer className="h-4 w-4" /> Print order</Button></Link>
+        <div className="ml-auto flex gap-2">
+          <Link to={`/scan/${orderDate}`}><Button variant="secondary"><ScanBarcode className="h-4 w-4" /> Scan on phone</Button></Link>
+          <Link to={`/print/${orderDate}`}><Button><Printer className="h-4 w-4" /> Print</Button></Link>
+        </div>
       </div>
       <p className="text-sm text-slate-500">Delivery days changed for a holiday? Set them on the <Link className="font-semibold text-brand-600" to="/calendar">Calendar</Link> page.</p>
 

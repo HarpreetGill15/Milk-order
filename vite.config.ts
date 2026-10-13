@@ -10,6 +10,8 @@ export default defineConfig({
       // pdfjs is lazy-loaded only when a PDF sales report is uploaded, so keep it out of the precache.
       globIgnores: ['**/pdf-*.js', '**/pdf.worker-*.js'],
       maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+      // The SPA fallback must not answer /api calls with the cached app shell.
+      navigateFallbackDenylist: [/^\/api\//],
     },
     manifest: { name: 'Milk Order', short_name: 'Milk Order', description: 'Dairy count and order helper', theme_color: '#1d4ed8', background_color: '#f8fafc', display: 'standalone', start_url: '/', icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }] },
   })],

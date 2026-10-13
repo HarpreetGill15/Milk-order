@@ -41,8 +41,12 @@ export interface ItemIdentity {
   name: string
 }
 
-// Trailing size column in the BDMS report: "2l 2000ML", "4l 4000ML", "473ml 473ML" (sometimes cut off as "473M").
-const SIZE_SUFFIX = /\s+(\d+(?:\.\d+)?)\s?(l|ml)\s+\d+\s?[a-z]*$/i
+// Trailing size column in the BDMS report: "2l 2000ML", "4l 4000ML", "473ml 473ML", sometimes cut
+// off ("473ml 473M", "11 1000M"). The millilitre number is the reliable part — a photo often reads
+// the letter l as a 1 ("21 2000ML") — so the size is worked out from it.
+const SIZE_SUFFIX = /\s+\S+\s+(\d{3,4})\s?(?:m[a-z]*)?$/i
+
+const sizeFromMl = (ml: number) => (ml >= 1000 ? `${ml / 1000}L` : `${ml}ml`)
 
 /**
  * Splits the text left of the day columns — "0005530011001 12088501 Beatr.milk 2% 2l 2000ML" —
@@ -63,6 +67,6 @@ export function parseIdentity(text: string): ItemIdentity {
     }
   }
   const size = rest.match(SIZE_SUFFIX)
-  if (size) rest = `${rest.slice(0, size.index)} ${size[1]}${size[2].toLowerCase() === 'l' ? 'L' : 'ml'}`
+  if (size) rest = `${rest.slice(0, size.index)} ${sizeFromMl(Number(size[1]))}`
   return { upc, vendorCode, name: rest.trim() }
 }

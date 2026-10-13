@@ -43,3 +43,14 @@ describe('BDMS report names', () => {
     expect(nameLooksLikeCode('Beatr.milk 2%')).toBe(false)
   })
 })
+
+describe('sizes read off photos', () => {
+  it.each([
+    ['Beatr.milk 2% 21 2000ML', 'Beatr.milk 2% 2L'],
+    ['Beatr.part.skim 1% choc.milk 11 1000M', 'Beatr.part.skim 1% choc.milk 1L'],
+    ['Lactan.PurFilt.milk 2% 1.5l 1500ML', 'Lactan.PurFilt.milk 2% 1.5L'],
+    ['Beatr.ch.milk 1% 3l 3000ML', 'Beatr.ch.milk 1% 3L'],
+    ['Selection whipping cream 35% 473ml 473', 'Selection whipping cream 35% 473ml'],
+    ['Ast.Orig.balkan plain yog. DISC 175G', 'Ast.Orig.balkan plain yog. DISC 175G'],
+  ])('%s → %s', (text, name) => expect(parseIdentity(text).name).toBe(name))
+})

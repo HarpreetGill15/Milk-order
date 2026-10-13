@@ -2,6 +2,7 @@ import { AlertTriangle, FileUp, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { Button, Card } from '../components/button'
+import { PhotoImport } from '../components/photo-import'
 import { deleteSalesWeek, saveItems, saveSalesWeek } from '../data/api'
 import { useItems, useSalesWeeks } from '../data/hooks'
 import { addDaysIso, DAY_SHORT, lastFullWeekStart, prettyDate, sundayOf, todayIso } from '../lib/dates'
@@ -134,6 +135,16 @@ export function SalesPage() {
         </label>
         {message && <p className="rounded-xl bg-slate-100 p-3 text-sm">{message}</p>}
       </Card>
+
+      <PhotoImport
+        items={items}
+        onSales={(report, label) => {
+          // Shown in the same preview as an uploaded file: check the week and rows, then Save week.
+          setMessage('')
+          setUploads([{ fileName: `Photos (${label})`, report, error: null, weekStart: report.weekStart ?? lastFullWeekStart() }])
+          setMatches(autoMatches(items, report.rows))
+        }}
+      />
 
       {uploads.length === 1 && (
         <SinglePreview

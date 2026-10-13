@@ -66,6 +66,29 @@ Uncounted items are treated as 0 on hand and flagged on the order screen.
 - **Items**: walk order, brand (Lactantia / Béatrice / Selection / Other), size, crate size,
   safety stock, UPC, vendor code, active.
 
+## Reading reports from photos (`api/read-report.ts`)
+
+While the app can't be opened on the store computer, the Sales page can read the BDMS screens from
+photos: the 7-day sales report and the Order Sheet by Vendor. Photos are taken with the camera
+inside the app (they aren't saved to the phone's gallery) or chosen from the phone. Each photo is
+shrunk to 2576 px on the long side and sent to a Vercel function that asks Claude
+(`claude-opus-5-5`, structured JSON output) to transcribe the rows, putting each number under its
+day column because BDMS leaves zero days blank. Sales rows go into the usual preview, where they can
+be checked and saved. Order Sheet items can be added to the item list; yogurt, milkshakes and
+discontinued lines are unticked by default.
+
+Vercel environment variables:
+
+- `ANTHROPIC_API_KEY`: required for photo reading (from console.anthropic.com).
+- `PHOTO_PIN`: optional, but recommended. With it set, the app asks for this PIN once per device
+  before reading photos, so someone else with the link can't spend API credit.
+
+## Scan mode (phone)
+
+Order page → **Scan on phone** shows one order line at a time: the item's barcode (UPC or vendor
+code) across the full width of the screen and the quantity in large type, optionally also as a
+barcode. The screen stays on while it's open. Use Back/Next to step through the lines.
+
 ## Setup
 
 ```
