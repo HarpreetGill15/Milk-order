@@ -40,8 +40,7 @@ function useWakeLock() {
 export function ScanPage() {
   const { orderDate = '' } = useParams()
   const { planner, items, counts, orders, loading } = usePlanner()
-  const count = counts.find(c => c.date === orderDate)
-  const deliveries = useMemo(() => buildOrders(items, orderDate, count, planner, orders), [items, orderDate, count, planner, orders])
+  const deliveries = useMemo(() => buildOrders(items, orderDate, counts, planner, orders), [items, orderDate, counts, planner, orders])
   const [deliveryIndex, setDeliveryIndex] = useState(0)
   const [index, setIndex] = useState(0)
   const [codeField, setCodeField] = useState<CodeField>(() => (load(BARCODE_KEY) === 'vendorCode' ? 'vendorCode' : 'code'))

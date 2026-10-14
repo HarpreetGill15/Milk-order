@@ -1,4 +1,4 @@
-import { Megaphone } from 'lucide-react'
+import { Megaphone, PackagePlus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Card, Chip } from '../components/button'
@@ -7,7 +7,9 @@ import { usePlanner } from '../data/hooks'
 import { addDaysIso, prettyDate, todayIso } from '../lib/dates'
 import { DEFAULT_FILTER, filterAndSort, SIZE_LABEL, type ItemFilter } from '../lib/item-filters'
 import { normalizeName } from '../lib/item-detect'
-import { adWeekStart, DEFAULT_PROMO_LIFT } from '../lib/promos'
+import { adWeekStart, DEFAULT_PROMO_LIFT, defaultDistroStart, distroSplit } from '../lib/promos'
+import type { Planner } from '../lib/planner'
+import type { Distro } from '../types'
 import { cn } from '../lib/utils'
 import { BRANDS, SIZES } from '../types'
 
@@ -39,6 +41,7 @@ export function PromosPage() {
           <h1 className="flex items-center gap-2 text-lg font-bold"><Megaphone className="h-5 w-5 text-orange-600" /> Flyer promos</h1>
           <p className="text-sm text-slate-500">
             Ad weeks run Thursday to Wednesday. Tick what's in the flyer and orders covering those days are raised.
+            If the warehouse sends a distro for an item, enter it so it isn't ordered twice.
             Leave the lift blank to use the learned number: {overall
               ? <>your past promos average <b>{overall.lift > 0 ? '+' : ''}{overall.lift}%</b> ({overall.samples} promo-week{overall.samples === 1 ? '' : 's'}), and items with their own promo history use their own.</>
               : <>until a past flyer week is set here and its sales are uploaded, that's a starting guess of <b>+{DEFAULT_PROMO_LIFT}%</b>.</>}
@@ -71,7 +74,7 @@ export function PromosPage() {
             const active = entry !== undefined
             const auto = planner.learnedPromos.perItem[item.id]
             return (
-              <li key={item.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 py-2', active && 'bg-orange-50/60')}>
+              <li key={item.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 py-2', active && 'bg-orange-50/60')}>
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
                   <input type="checkbox" className="h-5 w-5 shrink-0 accent-orange-600" checked={active} onChange={event => void setPromoItem(weekStart, item.id, event.target.checked ? { lift: null } : null)} />
                   <span className="min-w-0">
@@ -86,12 +89,72 @@ export function PromosPage() {
                     onChange={lift => void setPromoItem(weekStart, item.id, { lift })}
                   />
                 )}
+                {active && (
+                  <DistroEditor
+                    planner={planner}
+                    weekStart={weekStart}
+                    distro={entry.distro ?? null}
+                    onChange={distro => void setPromoItem(weekStart, item.id, { distro })}
+                  />
+                )}
               </li>
             )
           })}
         </ul>
         {shown.length === 0 && <p className="text-sm text-slate-500">No items match.</p>}
       </Card>
+    </div>
+  )
+}
+
+/**
+ * Distro: promo stock the warehouse sends without an order, all on one delivery or split over a
+ * few. It's taken off the suggested orders for the deliveries it comes on.
+ */
+function DistroEditor({ planner, weekStart, distro, onChange }: { planner: Planner; weekStart: string; distro: Distro | null; onChange: (distro: Distro | null) => void }) {
+  const [text, setText] = useState<string | null>(null)
+  const deliveryDates = Array.from({ length: 14 }, (_, i) => addDaysIso(weekStart, i - 7)).filter(date => planner.schedule.deliveryOn(date))
+  const start = distro?.start ?? defaultDistroStart(weekStart, planner.schedule.deliveryOn)
+  const deliveries = distro?.deliveries ?? 1
+  const save = (patch: Partial<Distro>) => {
+    const next = { total: distro?.total ?? 0, deliveries, start, ...patch }
+    onChange(next.total > 0 ? next : null)
+  }
+  const commitTotal = () => {
+    if (text === null) return
+    const total = text.trim() === '' ? 0 : Number(text)
+    if (Number.isFinite(total) && total !== (distro?.total ?? 0)) save({ total: Math.max(0, Math.round(total)) })
+    setText(null)
+  }
+  const split = distro ? distroSplit(distro, planner.schedule.deliveryOn) : []
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2 pl-8 text-sm text-slate-600">
+      <PackagePlus className="h-4 w-4 text-violet-600" />
+      Distro
+      <input
+        inputMode="numeric"
+        className="h-9 w-16 rounded-lg border px-2 text-center tabular-nums"
+        placeholder="0"
+        value={text ?? (distro?.total ? String(distro.total) : '')}
+        onFocus={() => setText(distro?.total ? String(distro.total) : '')}
+        onChange={event => setText(event.target.value.replace(/\D/g, ''))}
+        onBlur={commitTotal}
+        onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
+      />
+      units over
+      {[1, 2, 3, 4].map(n => (
+        <Chip key={n} active={deliveries === n} className="min-h-8 px-2.5" onClick={() => save({ deliveries: n })}>{n}</Chip>
+      ))}
+      deliveries from
+      <select className="h-9 rounded-lg border px-1" value={start} onChange={event => save({ start: event.target.value })}>
+        {deliveryDates.map(date => <option key={date} value={date}>{prettyDate(date)}</option>)}
+      </select>
+      {split.length > 0 && (
+        <span className="w-full text-xs text-violet-800">
+          {split.map(part => `${prettyDate(part.deliveryDate)}: ${part.quantity}`).join(' · ')} — taken off those orders
+        </span>
+      )}
     </div>
   )
 }

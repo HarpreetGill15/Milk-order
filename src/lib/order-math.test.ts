@@ -67,6 +67,34 @@ describe('suggestOrders', () => {
     expect(sunday).toMatchObject({ stockAtDelivery: 12, forecast: 15, suggested: 9 })
   })
 
+  describe('stock that arrives without being part of this order', () => {
+    // Fri 5, Sat 20, Sun 10, Mon 8, Tue 6
+    const fri = forecastFrom({ '2026-10-02': 5, '2026-10-03': 20, '2026-10-04': 10, '2026-10-05': 8, '2026-10-06': 6 })
+    const plans = [plan('2026-10-03', ['2026-10-03', '2026-10-04']), plan('2026-10-05', ['2026-10-05', '2026-10-06'])]
+
+    it("counts Friday's own delivery (ordered Thursday) that lands after the Friday count", () => {
+      const arrivals = (date: string) => (date === '2026-10-02' ? 9 : 0)
+      const [sat, mon] = suggestOrders(item, '2026-10-02', 12, plans, fri, [], arrivals)
+      // Sat: 12 + 9 − 5 = 16 on hand; 30 + 2 − 16 = 16 → 18 (was 27 without the Friday delivery)
+      expect(sat).toMatchObject({ stockAtDelivery: 16, arriving: 9, incoming: 0, suggested: 18 })
+      // Mon: 16 + 18 − 30 = 4; 14 + 2 − 4 = 12 → 18
+      expect(mon).toMatchObject({ stockAtDelivery: 4, suggested: 18 })
+    })
+
+    it('takes a distro on the delivery off the order, and carries it into the next one', () => {
+      const arrivals = (date: string) => (date === '2026-10-03' ? 20 : 0)
+      const [sat, mon] = suggestOrders(item, '2026-10-02', 12, plans, fri, [], arrivals)
+      // Sat: 7 on hand + 20 distro; 30 + 2 − 7 − 20 = 5 → 9. Mon: 7 + 20 + 9 − 30 = 6; 14 + 2 − 6 = 10 → 18
+      expect(sat).toMatchObject({ stockAtDelivery: 7, incoming: 20, suggested: 9 })
+      expect(mon).toMatchObject({ stockAtDelivery: 6, arriving: 0, suggested: 18 })
+    })
+
+    it('a distro bigger than the need orders nothing', () => {
+      const [sat] = suggestOrders(item, '2026-10-02', 12, plans, fri, [], date => (date === '2026-10-03' ? 40 : 0))
+      expect(sat.suggested).toBe(0)
+    })
+  })
+
   it('returns nothing when no deliveries are ordered that day', () => {
     expect(suggestOrders(item, '2026-09-28', 10, [], forecast)).toEqual([])
   })

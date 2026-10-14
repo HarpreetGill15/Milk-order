@@ -24,10 +24,16 @@ off automatically.
 ## Order math (`src/lib/order-math.ts`, `src/lib/forecast.ts`)
 
 ```
-stock at delivery = count − forecast(order day … day before delivery)   (count is before 10am)
-order             = forecast(days until the next delivery) + safety stock − stock at delivery
-                    → rounded UP to the item's crate size, shown in units
+each day from the count: stock = max(0, stock + what arrives that day − forecast that day)
+at each delivery:       order = forecast(days until the next delivery) + safety stock
+                                − stock − distro on that truck
+                                → rounded UP to the item's crate size, shown in units
 ```
+
+The count is before 10am and deliveries arrive during the day. "What arrives" covers deliveries
+ordered on an earlier day that land before this order's delivery: Friday's own delivery
+(ordered Thursday) arrives after the Friday count, before Saturday. For those it uses the quantity
+marked as ordered, else a hand edit, else that order's own suggestion. Distros count too.
 
 - **Normal-day forecast**: the same weekday from the nearest 8 uploaded weeks (within 16 weeks),
   nearer weeks weighted more. With 5+ weeks the highest and lowest are dropped. Holiday/event
@@ -54,6 +60,10 @@ Their forecast on those days is raised by the promo lift: a number you type for 
 that item sold on its past promos, else the average across all past promos, else a starting
 guess of +50%. Lifts are learned from flyer weeks that are ticked here *and* have sales uploaded.
 Promo days are kept out of normal-day averages, like holidays.
+
+**Distros**: promo stock the warehouse sends for an ad without an order. On the Promos page enter
+the total and how many deliveries it's split over (1–4) from which delivery; it's spread evenly
+(remainder on the first) and taken off the orders for those deliveries.
 
 ### Learning from previous orders (`src/lib/trend.ts`)
 

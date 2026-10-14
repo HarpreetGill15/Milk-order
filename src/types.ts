@@ -73,9 +73,19 @@ export interface SavedOrder {
   placed?: { at: string; quantities: Record<string, number> }
 }
 
+/**
+ * Promo stock the warehouse sends for an ad without the store ordering it: `total` units spread
+ * evenly over `deliveries` deliveries, starting with the delivery on `start`.
+ */
+export interface Distro {
+  total: number
+  deliveries: number
+  start: string
+}
+
 /** Items in one week's flyer. Ad weeks run Thursday to Wednesday; the id is the Thursday's date. */
 export interface Promo {
   weekStart: string
   /** itemId → promo settings; `lift` (% more sales) overrides the learned/default lift when set. */
-  items: Record<string, { lift?: number | null }>
+  items: Record<string, { lift?: number | null; distro?: Distro | null }>
 }

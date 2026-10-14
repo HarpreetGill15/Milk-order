@@ -1,7 +1,7 @@
 import type { Count, Item, Promo, SalesWeek, SavedOrder } from '../types'
 import { forecastBase, learnHolidayEffects, outOfStockLookup, type ForecastContext } from './forecast'
 import { categoryOf, createCalendar, type Calendar, type CustomEvent, type HolidaySetting, type LearnedEffects } from './holidays'
-import { createPromoLookup, learnPromoLift, type LearnedPromos, type PromoLookup } from './promos'
+import { createDistroLookup, createPromoLookup, learnPromoLift, type LearnedPromos, type PromoLookup } from './promos'
 import { createSchedule, type Schedule, type ScheduleChange } from './schedule'
 import { learnTrends, type ItemTrend } from './trend'
 
@@ -24,6 +24,8 @@ export interface Planner {
   learnedPromos: LearnedPromos
   /** Per item: selling faster/slower than forecast, learned from counts and orders marked as ordered. */
   trends: Record<string, ItemTrend>
+  /** Distro units of the item arriving with the delivery on that date. */
+  distroOn: (itemId: string, date: string) => number
   /**
    * Expected units sold of the item on the date: 0 when closed, otherwise
    * normal-day forecast × holiday factor × promo lift × the item's trend.
@@ -54,8 +56,9 @@ export function createPlanner(input: PlannerInput): Planner {
     }
     return cache.get(key)!
   }
-  const trends = learnTrends(input.items, input.counts, input.orders ?? [], schedule.deliveryOn, withoutTrend)
+  const distroOn = createDistroLookup(promos, schedule.deliveryOn)
+  const trends = learnTrends(input.items, input.counts, input.orders ?? [], schedule.deliveryOn, withoutTrend, distroOn)
   const forecast = (item: Pick<Item, 'id' | 'size'>, date: string) => withoutTrend(item, date) * (trends[item.id]?.factor ?? 1)
 
-  return { calendar, schedule, learned, promos: promoLookup, learnedPromos, trends, forecast }
+  return { calendar, schedule, learned, promos: promoLookup, learnedPromos, trends, distroOn, forecast }
 }

@@ -21,7 +21,7 @@ export function OrderPage() {
   const orderDate = chosenDate ?? planner.schedule.nextOrderDay(todayIso())
 
   const count = counts.find(c => c.date === orderDate)
-  const deliveries = useMemo(() => buildOrders(items, orderDate, count, planner, orders), [items, orderDate, count, planner, orders])
+  const deliveries = useMemo(() => buildOrders(items, orderDate, counts, planner, orders), [items, orderDate, counts, planner, orders])
   const uncounted = items.filter(item => item.active && !count?.entries[item.id]).length
 
   const savedFor = (delivery: DeliveryOrder) => orders.find(order => order.orderDate === orderDate && order.deliveryDate === delivery.deliveryDate)
@@ -120,6 +120,14 @@ function DeliveryTable({ delivery, planner, onSetFinal }: { delivery: DeliveryOr
           Lasts until the next delivery · {total} units total
           {delivery.projected && <span className="ml-1 font-medium text-amber-700">· stock is projected from the earlier delivery (no count in between)</span>}
         </p>
+        {delivery.earlier.map(earlier => (
+          <p key={earlier.deliveryDate} className={cn('text-sm', earlier.source === 'placed' ? 'text-slate-600' : 'text-amber-700')}>
+            Stock includes the {prettyDate(earlier.deliveryDate)} delivery (ordered {prettyDate(earlier.orderDate)}){' '}
+            {earlier.source === 'placed' && '— as marked ordered.'}
+            {earlier.source === 'suggested' && "— not marked as ordered, so its suggestion is used. Mark that order as ordered to use the real quantities."}
+            {earlier.source === 'unknown' && '— no count or marked order for that day, so it is counted as 0. Mark that order as ordered for a better suggestion.'}
+          </p>
+        ))}
         <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {delivery.coversDates.map(date => (
             <li key={date} className="flex flex-wrap items-center gap-1">

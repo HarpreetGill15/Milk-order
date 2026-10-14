@@ -1,6 +1,6 @@
 import type { CustomEvent } from '../lib/holidays'
 import type { ScheduleChange } from '../lib/schedule'
-import type { CountEntry, Item, OrderLine, SalesWeek, SavedOrder } from '../types'
+import type { CountEntry, Item, OrderLine, Promo, SalesWeek, SavedOrder } from '../types'
 import { store } from './store'
 
 type Doc = Record<string, unknown>
@@ -41,7 +41,7 @@ export const saveEvent = (event: CustomEvent) => store.put('events', event.id, a
 export const deleteEvent = (id: string) => store.remove('events', id)
 
 /** Puts an item in (or, with `null`, takes it out of) the flyer for the ad week starting `weekStart` (a Thursday). */
-export const setPromoItem = (weekStart: string, itemId: string, value: { lift?: number | null } | null) =>
+export const setPromoItem = (weekStart: string, itemId: string, value: Promo['items'][string] | null) =>
   value === null
     ? store.clearField('promos', weekStart, ['items', itemId])
     : store.merge('promos', weekStart, { weekStart, items: { [itemId]: value } })

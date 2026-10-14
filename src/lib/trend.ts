@@ -19,7 +19,7 @@ export interface ItemTrend {
 
 /**
  * Learns from previous orders: between two counts, what left the cooler is
- *   earlier count + what was delivered in between (from orders marked as ordered) − later count
+ *   earlier count + what was delivered in between (orders marked as ordered + distros) − later count
  * Compared with what was forecast for those days, that shows whether an item is selling faster or
  * slower than the sales history says — and catches spoilage, which also has to be re-ordered.
  *
@@ -32,6 +32,7 @@ export function learnTrends(
   orders: SavedOrder[],
   deliveryOn: (date: string) => { deliveryDate: string } | null,
   forecast: (item: Item, date: string) => number,
+  distroOn: (itemId: string, date: string) => number = () => 0,
 ): Record<string, ItemTrend> {
   const placed = new Map<string, Record<string, number>>()
   for (const order of orders) if (order.placed) placed.set(order.deliveryDate, order.placed.quantities)
@@ -54,7 +55,7 @@ export function learnTrends(
         if (!deliveryOn(day)) continue
         const quantities = placed.get(day)
         if (!quantities) { complete = false; break }
-        delivered += quantities[item.id] ?? 0
+        delivered += (quantities[item.id] ?? 0) + distroOn(item.id, day)
       }
       if (!complete) continue
       const actual = earlier.entries[item.id].total + delivered - later.entries[item.id].total

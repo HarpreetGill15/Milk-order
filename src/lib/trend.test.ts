@@ -39,3 +39,12 @@ describe('lastOrderedOnWeekday', () => {
     expect(lastOrderedOnWeekday(orders, 'a', '2026-09-23')).toBeNull()
   })
 })
+
+describe('learnTrends with distros', () => {
+  it('counts distro stock as delivered', () => {
+    // Tue 20, Wed delivery 18 ordered + 12 distro, Thu 20 → 30 gone; forecast 30 → no trend.
+    const counts = [count('2026-09-29', 20), count('2026-10-01', 20)]
+    const trends = learnTrends([item], counts, [placed('2026-09-29', '2026-09-30', 18)], deliveryOn, () => 15, (_, date) => (date === '2026-09-30' ? 12 : 0))
+    expect(trends.a).toMatchObject({ actual: 30, forecast: 30, factor: 1 })
+  })
+})

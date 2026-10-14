@@ -1,4 +1,4 @@
-import type { Item, Promo, SalesWeek } from '../types'
+import type { Distro, Item, Promo, SalesWeek } from '../types'
 import { addDaysIso, dayOfWeek, sundayOf } from './dates'
 import { forecastBase, type ForecastContext } from './forecast'
 
@@ -86,4 +86,36 @@ export function learnPromoLift(
     samples += sum.promos.size
   }
   return { perItem, overall: base > 0 ? { lift: Math.round((actual / base - 1) * 100), samples } : null }
+}
+
+/** The deliveries a distro lands on, starting at `start`, and how many units each brings. */
+export function distroSplit(distro: Distro, deliveryOn: (date: string) => unknown): { deliveryDate: string; quantity: number }[] {
+  const count = Math.max(1, Math.round(distro.deliveries))
+  const dates: string[] = []
+  for (let date = distro.start, i = 0; dates.length < count && i < 28; date = addDaysIso(date, 1), i++) if (deliveryOn(date)) dates.push(date)
+  // Spread evenly; the first deliveries take the remainder (10 over 4 → 3, 3, 2, 2).
+  const base = Math.floor(distro.total / count)
+  const extra = distro.total - base * count
+  return dates.map((deliveryDate, i) => ({ deliveryDate, quantity: base + (i < extra ? 1 : 0) }))
+}
+
+/** Default first distro delivery: the first delivery from the day before the ad starts. */
+export function defaultDistroStart(weekStart: string, deliveryOn: (date: string) => unknown): string {
+  for (let date = addDaysIso(weekStart, -1), i = 0; i < 14; date = addDaysIso(date, 1), i++) if (deliveryOn(date)) return date
+  return weekStart
+}
+
+/** Distro units of an item arriving with the delivery on `date`. */
+export function createDistroLookup(promos: Promo[], deliveryOn: (date: string) => unknown): (itemId: string, date: string) => number {
+  const byKey = new Map<string, number>()
+  for (const promo of promos) {
+    for (const [itemId, entry] of Object.entries(promo.items)) {
+      if (!entry.distro || entry.distro.total <= 0) continue
+      for (const { deliveryDate, quantity } of distroSplit(entry.distro, deliveryOn)) {
+        const key = `${itemId}|${deliveryDate}`
+        byKey.set(key, (byKey.get(key) ?? 0) + quantity)
+      }
+    }
+  }
+  return (itemId, date) => byKey.get(`${itemId}|${date}`) ?? 0
 }

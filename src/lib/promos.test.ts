@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Item, Promo, SalesWeek, WeekDays } from '../types'
-import { adWeekStart, createPromoLookup, DEFAULT_PROMO_LIFT, learnPromoLift } from './promos'
+import { adWeekStart, createDistroLookup, createPromoLookup, DEFAULT_PROMO_LIFT, defaultDistroStart, distroSplit, learnPromoLift } from './promos'
 import { createPlanner } from './planner'
 
 const item = { id: 'a', size: '4L', name: 'Beatr.2% milk 4L' } as Item
@@ -40,5 +40,27 @@ describe('promo lift', () => {
     // Thu Oct 15 starts the next flyer: 10 × 1.6 learned lift.
     expect(planner.forecast(item, '2026-10-15')).toBeCloseTo(16)
     expect(planner.promos.promoOn('a', '2026-10-15')?.source).toBe('item')
+  })
+})
+
+describe('distros', () => {
+  // Regular deliveries Mon, Wed, Fri, Sat.
+  const deliveryOn = (date: string) => [1, 3, 5, 6].includes(new Date(`${date}T12:00:00`).getDay())
+
+  it('defaults to the first delivery from the day before the ad starts', () => {
+    expect(defaultDistroStart('2026-10-15', deliveryOn)).toBe('2026-10-14') // Wed before a Thu ad
+  })
+
+  it('splits evenly over the next deliveries, remainder first', () => {
+    expect(distroSplit({ total: 10, deliveries: 4, start: '2026-10-14' }, deliveryOn)).toEqual([
+      { deliveryDate: '2026-10-14', quantity: 3 }, { deliveryDate: '2026-10-16', quantity: 3 },
+      { deliveryDate: '2026-10-17', quantity: 2 }, { deliveryDate: '2026-10-19', quantity: 2 },
+    ])
+    expect(distroSplit({ total: 36, deliveries: 1, start: '2026-10-15' }, deliveryOn)).toEqual([{ deliveryDate: '2026-10-16', quantity: 36 }])
+  })
+
+  it('looks up distro per item and delivery', () => {
+    const lookup = createDistroLookup([{ weekStart: '2026-10-15', items: { a: { distro: { total: 8, deliveries: 2, start: '2026-10-14' } }, b: {} } }], deliveryOn)
+    expect([lookup('a', '2026-10-14'), lookup('a', '2026-10-16'), lookup('a', '2026-10-17'), lookup('b', '2026-10-14')]).toEqual([4, 4, 0, 0])
   })
 })

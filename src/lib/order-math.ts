@@ -10,8 +10,12 @@ export function roundUpToStep(units: number, step: number): number {
 export interface OrderSuggestion {
   deliveryDate: string
   coversDates: string[]
-  /** Units expected on hand when the truck arrives (count minus sales until then, or projected for a later delivery). */
+  /** Units expected on hand when the truck arrives, before this delivery (and its distro) is added. */
   stockAtDelivery: number
+  /** Units arriving before this delivery that aren't part of this order: earlier orders and distros. */
+  arriving: number
+  /** Distro (promo stock the warehouse sends without an order) arriving with this delivery. */
+  incoming: number
   /** Forecast sales across coversDates. */
   forecast: number
   /** Units to still have in the cooler when the next truck comes. */
@@ -22,13 +26,17 @@ export interface OrderSuggestion {
 }
 
 /**
- * Suggested order quantities for one item for every delivery ordered on `orderDate`.
+ * Suggested order quantities for one item for every delivery ordered on `orderDate`, walking day
+ * by day from the morning count:
  *
- *   stock at delivery = count − forecast(order day … day before delivery)   (count is before 10am)
- *   order             = forecast(covered days) + safety stock − stock at delivery, rounded up to orderStep
+ *   each day: stock = max(0, stock + what arrives that day − forecast sales that day)
+ *   at a delivery: order = forecast(covered days) + safety stock − stock − distro on this truck,
+ *                  rounded up to orderStep
  *
- * A later delivery ordered the same day has no count of its own, so its stock is projected from
- * the earlier one: stock then + what's being ordered − forecast until the later delivery.
+ * `arrivals(date)` is stock that turns up that day without being part of this order: a delivery
+ * ordered on an earlier day (Friday's own delivery, ordered Thursday, lands after Friday's
+ * count) and distros. A later delivery ordered the same day (Friday's Monday order) builds on the
+ * earlier one: stock then + distro + what's being ordered, then the days in between.
  * `finalOverrides[i]` is the hand-edited quantity for delivery i, when there is one.
  */
 export function suggestOrders(
@@ -38,23 +46,31 @@ export function suggestOrders(
   plans: DeliveryPlan[],
   forecast: (date: string) => number,
   finalOverrides: (number | undefined)[] = [],
+  arrivals: (date: string) => number = () => 0,
 ): OrderSuggestion[] {
   const sum = (dates: string[]) => dates.reduce((total, date) => total + forecast(date), 0)
+  // Items saved before safety stock existed have no value yet.
+  const safetyStock = item.safetyStock ?? 0
   const results: OrderSuggestion[] = []
+  let stock = countedUnits
+  let from = orderDate
+  let skipArrivalsOn: string | null = null
+
   plans.forEach((plan, index) => {
-    let stock: number
-    if (index === 0) {
-      stock = Math.max(0, countedUnits - sum(datesBetween(orderDate, plan.deliveryDate)))
-    } else {
-      const previous = results[index - 1]
-      const ordered = finalOverrides[index - 1] ?? previous.suggested
-      stock = Math.max(0, previous.stockAtDelivery + ordered - sum(datesBetween(previous.deliveryDate, plan.deliveryDate)))
+    let arriving = 0
+    for (const date of datesBetween(from, plan.deliveryDate)) {
+      const arrived = date === skipArrivalsOn ? 0 : arrivals(date)
+      arriving += arrived
+      stock = Math.max(0, stock + arrived - forecast(date))
     }
+    const incoming = arrivals(plan.deliveryDate)
     const coverForecast = sum(plan.coversDates)
-    // Items saved before safety stock existed have no value yet.
-    const safetyStock = item.safetyStock ?? 0
-    const suggested = roundUpToStep(coverForecast + safetyStock - stock, item.orderStep)
-    results.push({ deliveryDate: plan.deliveryDate, coversDates: plan.coversDates, stockAtDelivery: stock, forecast: coverForecast, safetyStock, suggested, projected: index > 0 })
+    const suggested = roundUpToStep(coverForecast + safetyStock - stock - incoming, item.orderStep)
+    results.push({ deliveryDate: plan.deliveryDate, coversDates: plan.coversDates, stockAtDelivery: stock, arriving, incoming, forecast: coverForecast, safetyStock, suggested, projected: index > 0 })
+    // The next delivery ordered today starts from this one arriving.
+    stock += incoming + (finalOverrides[index] ?? suggested)
+    from = plan.deliveryDate
+    skipArrivalsOn = plan.deliveryDate
   })
   return results
 }

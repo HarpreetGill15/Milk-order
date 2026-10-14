@@ -19,8 +19,7 @@ export function PrintPage() {
     setBarcodeField(field)
     try { localStorage.setItem('milk-order:barcode', field) } catch { /* not remembered in private mode */ }
   }
-  const count = counts.find(c => c.date === orderDate)
-  const deliveries = useMemo(() => buildOrders(items, orderDate, count, planner, orders), [items, orderDate, count, planner, orders])
+  const deliveries = useMemo(() => buildOrders(items, orderDate, counts, planner, orders), [items, orderDate, counts, planner, orders])
 
   if (loading) return <p className="p-6 text-slate-500">Loading…</p>
 
