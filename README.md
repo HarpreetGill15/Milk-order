@@ -61,9 +61,10 @@ that item sold on its past promos, else the average across all past promos, else
 guess of +50%. Lifts are learned from flyer weeks that are ticked here *and* have sales uploaded.
 Promo days are kept out of normal-day averages, like holidays.
 
-**Distros**: promo stock the warehouse sends for an ad without an order. On the Promos page enter
-the total and how many deliveries it's split over (1–4) from which delivery; it's spread evenly
-(remainder on the first) and taken off the orders for those deliveries.
+**Distros**: promo stock the warehouse sends for an ad without an order, a set amount on each
+delivery (usually starting with the Wednesday delivery, then Friday and Saturday). On the Promos
+page, each promo item has a box per delivery from the Wednesday before the ad through the ad week;
+each amount is taken off the suggested order for that delivery.
 
 ### Learning from previous orders (`src/lib/trend.ts`)
 

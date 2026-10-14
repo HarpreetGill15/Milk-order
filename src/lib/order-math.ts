@@ -2,9 +2,11 @@ import type { Item } from '../types'
 import { datesBetween, type DeliveryPlan } from './schedule'
 
 export function roundUpToStep(units: number, step: number): number {
-  if (units <= 0) return 0
+  // Forecasts are fractional, so 44 can arrive as 44.000000001; that must not round up a whole crate.
+  const clean = Math.round(units * 1e6) / 1e6
+  if (clean <= 0) return 0
   const safeStep = step > 0 ? step : 1
-  return Math.ceil(units / safeStep) * safeStep
+  return Math.ceil(clean / safeStep) * safeStep
 }
 
 export interface OrderSuggestion {

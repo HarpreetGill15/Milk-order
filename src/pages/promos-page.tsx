@@ -7,9 +7,9 @@ import { usePlanner } from '../data/hooks'
 import { addDaysIso, prettyDate, todayIso } from '../lib/dates'
 import { DEFAULT_FILTER, filterAndSort, SIZE_LABEL, type ItemFilter } from '../lib/item-filters'
 import { normalizeName } from '../lib/item-detect'
-import { adWeekStart, DEFAULT_PROMO_LIFT, defaultDistroStart, distroSplit } from '../lib/promos'
+import { adWeekStart, DEFAULT_PROMO_LIFT, distroDeliveryDates, distroQuantities } from '../lib/promos'
 import type { Planner } from '../lib/planner'
-import type { Distro } from '../types'
+import type { Distro, LegacyDistro } from '../types'
 import { cn } from '../lib/utils'
 import { BRANDS, SIZES } from '../types'
 
@@ -108,54 +108,51 @@ export function PromosPage() {
 }
 
 /**
- * Distro: promo stock the warehouse sends without an order, all on one delivery or split over a
- * few. It's taken off the suggested orders for the deliveries it comes on.
+ * Distro: promo stock the warehouse sends without an order — a set amount on each delivery,
+ * usually starting with the Wednesday delivery, then Friday and Saturday. Each amount is taken off
+ * the suggested order for that delivery.
  */
-function DistroEditor({ planner, weekStart, distro, onChange }: { planner: Planner; weekStart: string; distro: Distro | null; onChange: (distro: Distro | null) => void }) {
-  const [text, setText] = useState<string | null>(null)
-  const deliveryDates = Array.from({ length: 14 }, (_, i) => addDaysIso(weekStart, i - 7)).filter(date => planner.schedule.deliveryOn(date))
-  const start = distro?.start ?? defaultDistroStart(weekStart, planner.schedule.deliveryOn)
-  const deliveries = distro?.deliveries ?? 1
-  const save = (patch: Partial<Distro>) => {
-    const next = { total: distro?.total ?? 0, deliveries, start, ...patch }
-    onChange(next.total > 0 ? next : null)
-  }
-  const commitTotal = () => {
-    if (text === null) return
-    const total = text.trim() === '' ? 0 : Number(text)
-    if (Number.isFinite(total) && total !== (distro?.total ?? 0)) save({ total: Math.max(0, Math.round(total)) })
-    setText(null)
-  }
-  const split = distro ? distroSplit(distro, planner.schedule.deliveryOn) : []
+function DistroEditor({ planner, weekStart, distro, onChange }: { planner: Planner; weekStart: string; distro: Distro | LegacyDistro | null; onChange: (distro: Distro) => void }) {
+  const quantities = distroQuantities(distro, planner.schedule.deliveryOn)
+  const dates = [...new Set([...distroDeliveryDates(weekStart, planner.schedule.deliveryOn), ...Object.keys(quantities)])].sort()
+  const total = Object.values(quantities).reduce((sum, units) => sum + units, 0)
+  // Saves every date so a distro saved the old way is rewritten in the new per-delivery form.
+  const set = (date: string, units: number) => onChange({ ...Object.fromEntries(dates.map(d => [d, quantities[d] ?? 0])), [date]: units })
 
   return (
-    <div className="flex w-full flex-wrap items-center gap-2 pl-8 text-sm text-slate-600">
-      <PackagePlus className="h-4 w-4 text-violet-600" />
-      Distro
-      <input
-        inputMode="numeric"
-        className="h-9 w-16 rounded-lg border px-2 text-center tabular-nums"
-        placeholder="0"
-        value={text ?? (distro?.total ? String(distro.total) : '')}
-        onFocus={() => setText(distro?.total ? String(distro.total) : '')}
-        onChange={event => setText(event.target.value.replace(/\D/g, ''))}
-        onBlur={commitTotal}
-        onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
-      />
-      units over
-      {[1, 2, 3, 4].map(n => (
-        <Chip key={n} active={deliveries === n} className="min-h-8 px-2.5" onClick={() => save({ deliveries: n })}>{n}</Chip>
-      ))}
-      deliveries from
-      <select className="h-9 rounded-lg border px-1" value={start} onChange={event => save({ start: event.target.value })}>
-        {deliveryDates.map(date => <option key={date} value={date}>{prettyDate(date)}</option>)}
-      </select>
-      {split.length > 0 && (
-        <span className="w-full text-xs text-violet-800">
-          {split.map(part => `${prettyDate(part.deliveryDate)}: ${part.quantity}`).join(' · ')} — taken off those orders
-        </span>
-      )}
+    <div className="w-full space-y-1 pl-8 text-sm text-slate-600">
+      <p className="flex items-center gap-1"><PackagePlus className="h-4 w-4 text-violet-600" /> Distro per delivery{total > 0 && <span className="text-violet-800"> · {total} units, taken off those orders</span>}</p>
+      <div className="flex flex-wrap gap-2">
+        {dates.map(date => (
+          <label key={date} className="flex items-center gap-1 rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">
+            <span className="text-xs">{prettyDate(date)}</span>
+            <UnitsInput value={quantities[date] ?? 0} onChange={units => set(date, units)} />
+          </label>
+        ))}
+      </div>
     </div>
+  )
+}
+
+function UnitsInput({ value, onChange }: { value: number; onChange: (units: number) => void }) {
+  const [text, setText] = useState<string | null>(null)
+  const commit = () => {
+    if (text === null) return
+    const units = text.trim() === '' ? 0 : Number(text)
+    if (Number.isFinite(units) && units !== value) onChange(Math.max(0, Math.round(units)))
+    setText(null)
+  }
+  return (
+    <input
+      inputMode="numeric"
+      className="h-8 w-12 rounded-md border px-1 text-center tabular-nums"
+      placeholder="0"
+      value={text ?? (value ? String(value) : '')}
+      onFocus={() => setText(value ? String(value) : '')}
+      onChange={event => setText(event.target.value.replace(/\D/g, ''))}
+      onBlur={commit}
+      onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
+    />
   )
 }
 

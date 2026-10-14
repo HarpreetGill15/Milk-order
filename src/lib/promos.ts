@@ -1,4 +1,4 @@
-import type { Distro, Item, Promo, SalesWeek } from '../types'
+import type { Distro, Item, LegacyDistro, Promo, SalesWeek } from '../types'
 import { addDaysIso, dayOfWeek, sundayOf } from './dates'
 import { forecastBase, type ForecastContext } from './forecast'
 
@@ -88,32 +88,39 @@ export function learnPromoLift(
   return { perItem, overall: base > 0 ? { lift: Math.round((actual / base - 1) * 100), samples } : null }
 }
 
-/** The deliveries a distro lands on, starting at `start`, and how many units each brings. */
-export function distroSplit(distro: Distro, deliveryOn: (date: string) => unknown): { deliveryDate: string; quantity: number }[] {
-  const count = Math.max(1, Math.round(distro.deliveries))
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Units per delivery date for a saved distro. Date keys are the current format; a distro saved
+ * the old way (one total spread evenly, remainder first) is expanded onto the deliveries it named.
+ */
+export function distroQuantities(distro: Distro | LegacyDistro | null | undefined, deliveryOn: (date: string) => unknown): Distro {
+  if (!distro) return {}
+  const dated = Object.entries(distro).filter(([key]) => DATE_KEY.test(key))
+  if (dated.length > 0) return Object.fromEntries(dated.map(([date, units]) => [date, Math.max(0, Math.round(Number(units) || 0))]))
+  const legacy = distro as Partial<LegacyDistro>
+  if (!legacy.total || !legacy.start) return {}
+  const count = Math.max(1, Math.round(legacy.deliveries ?? 1))
   const dates: string[] = []
-  for (let date = distro.start, i = 0; dates.length < count && i < 28; date = addDaysIso(date, 1), i++) if (deliveryOn(date)) dates.push(date)
-  // Spread evenly; the first deliveries take the remainder (10 over 4 → 3, 3, 2, 2).
-  const base = Math.floor(distro.total / count)
-  const extra = distro.total - base * count
-  return dates.map((deliveryDate, i) => ({ deliveryDate, quantity: base + (i < extra ? 1 : 0) }))
+  for (let date = legacy.start, i = 0; dates.length < count && i < 28; date = addDaysIso(date, 1), i++) if (deliveryOn(date)) dates.push(date)
+  const base = Math.floor(legacy.total / count)
+  const extra = legacy.total - base * count
+  return Object.fromEntries(dates.map((date, i) => [date, base + (i < extra ? 1 : 0)]))
 }
 
-/** Default first distro delivery: the first delivery from the day before the ad starts. */
-export function defaultDistroStart(weekStart: string, deliveryOn: (date: string) => unknown): string {
-  for (let date = addDaysIso(weekStart, -1), i = 0; i < 14; date = addDaysIso(date, 1), i++) if (deliveryOn(date)) return date
-  return weekStart
-}
+/** Deliveries a distro usually comes on: from the Wednesday before the ad through the ad week. */
+export const distroDeliveryDates = (weekStart: string, deliveryOn: (date: string) => unknown) =>
+  Array.from({ length: 8 }, (_, i) => addDaysIso(weekStart, i - 1)).filter(date => deliveryOn(date))
 
 /** Distro units of an item arriving with the delivery on `date`. */
 export function createDistroLookup(promos: Promo[], deliveryOn: (date: string) => unknown): (itemId: string, date: string) => number {
   const byKey = new Map<string, number>()
   for (const promo of promos) {
     for (const [itemId, entry] of Object.entries(promo.items)) {
-      if (!entry.distro || entry.distro.total <= 0) continue
-      for (const { deliveryDate, quantity } of distroSplit(entry.distro, deliveryOn)) {
-        const key = `${itemId}|${deliveryDate}`
-        byKey.set(key, (byKey.get(key) ?? 0) + quantity)
+      for (const [date, units] of Object.entries(distroQuantities(entry.distro, deliveryOn))) {
+        if (units <= 0) continue
+        const key = `${itemId}|${date}`
+        byKey.set(key, (byKey.get(key) ?? 0) + units)
       }
     }
   }

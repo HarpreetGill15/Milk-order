@@ -74,18 +74,17 @@ export interface SavedOrder {
 }
 
 /**
- * Promo stock the warehouse sends for an ad without the store ordering it: `total` units spread
- * evenly over `deliveries` deliveries, starting with the delivery on `start`.
+ * Promo stock the warehouse sends for an ad without the store ordering it: units per delivery,
+ * keyed by delivery date (e.g. { "2026-10-14": 12, "2026-10-16": 8, "2026-10-17": 6 }).
  */
-export interface Distro {
-  total: number
-  deliveries: number
-  start: string
-}
+export type Distro = Record<string, number>
+
+/** How an earlier version saved a distro: one total spread evenly over a few deliveries. */
+export interface LegacyDistro { total: number; deliveries: number; start: string }
 
 /** Items in one week's flyer. Ad weeks run Thursday to Wednesday; the id is the Thursday's date. */
 export interface Promo {
   weekStart: string
   /** itemId → promo settings; `lift` (% more sales) overrides the learned/default lift when set. */
-  items: Record<string, { lift?: number | null; distro?: Distro | null }>
+  items: Record<string, { lift?: number | null; distro?: Distro | LegacyDistro | null }>
 }

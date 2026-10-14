@@ -13,6 +13,10 @@ describe('roundUpToStep', () => {
     expect(roundUpToStep(0.2, 16)).toBe(16)
     expect(roundUpToStep(-3, 9)).toBe(0)
     expect(roundUpToStep(5, 0)).toBe(5)
+    // Floating-point leftovers don't add a crate: 0.1 × 3 × 40 is 12.000000000000002 in JavaScript.
+    expect(0.1 * 3 * 40).not.toBe(12)
+    expect(roundUpToStep(0.1 * 3 * 40, 4)).toBe(12)
+    expect(roundUpToStep(44.01, 4)).toBe(48)
   })
 })
 

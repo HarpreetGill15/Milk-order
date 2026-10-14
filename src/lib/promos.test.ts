@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Item, Promo, SalesWeek, WeekDays } from '../types'
-import { adWeekStart, createDistroLookup, createPromoLookup, DEFAULT_PROMO_LIFT, defaultDistroStart, distroSplit, learnPromoLift } from './promos'
+import { adWeekStart, createDistroLookup, createPromoLookup, DEFAULT_PROMO_LIFT, distroDeliveryDates, distroQuantities, learnPromoLift } from './promos'
 import { createPlanner } from './planner'
 
 const item = { id: 'a', size: '4L', name: 'Beatr.2% milk 4L' } as Item
@@ -47,20 +47,21 @@ describe('distros', () => {
   // Regular deliveries Mon, Wed, Fri, Sat.
   const deliveryOn = (date: string) => [1, 3, 5, 6].includes(new Date(`${date}T12:00:00`).getDay())
 
-  it('defaults to the first delivery from the day before the ad starts', () => {
-    expect(defaultDistroStart('2026-10-15', deliveryOn)).toBe('2026-10-14') // Wed before a Thu ad
+  it('offers the deliveries from the Wednesday before the ad through the ad week', () => {
+    expect(distroDeliveryDates('2026-10-15', deliveryOn)).toEqual(['2026-10-14', '2026-10-16', '2026-10-17', '2026-10-19', '2026-10-21'])
   })
 
-  it('splits evenly over the next deliveries, remainder first', () => {
-    expect(distroSplit({ total: 10, deliveries: 4, start: '2026-10-14' }, deliveryOn)).toEqual([
-      { deliveryDate: '2026-10-14', quantity: 3 }, { deliveryDate: '2026-10-16', quantity: 3 },
-      { deliveryDate: '2026-10-17', quantity: 2 }, { deliveryDate: '2026-10-19', quantity: 2 },
-    ])
-    expect(distroSplit({ total: 36, deliveries: 1, start: '2026-10-15' }, deliveryOn)).toEqual([{ deliveryDate: '2026-10-16', quantity: 36 }])
+  it('keeps a set amount per delivery', () => {
+    expect(distroQuantities({ '2026-10-14': 12, '2026-10-16': 8, '2026-10-17': 6 }, deliveryOn)).toEqual({ '2026-10-14': 12, '2026-10-16': 8, '2026-10-17': 6 })
+  })
+
+  it('expands a distro saved the old way, and prefers per-delivery amounts when both exist', () => {
+    expect(distroQuantities({ total: 10, deliveries: 4, start: '2026-10-14' }, deliveryOn)).toEqual({ '2026-10-14': 3, '2026-10-16': 3, '2026-10-17': 2, '2026-10-19': 2 })
+    expect(distroQuantities({ total: 10, deliveries: 4, start: '2026-10-14', '2026-10-16': 5 } as never, deliveryOn)).toEqual({ '2026-10-16': 5 })
   })
 
   it('looks up distro per item and delivery', () => {
-    const lookup = createDistroLookup([{ weekStart: '2026-10-15', items: { a: { distro: { total: 8, deliveries: 2, start: '2026-10-14' } }, b: {} } }], deliveryOn)
-    expect([lookup('a', '2026-10-14'), lookup('a', '2026-10-16'), lookup('a', '2026-10-17'), lookup('b', '2026-10-14')]).toEqual([4, 4, 0, 0])
+    const lookup = createDistroLookup([{ weekStart: '2026-10-15', items: { a: { distro: { '2026-10-14': 12, '2026-10-16': 8, '2026-10-17': 0 } }, b: {} } }], deliveryOn)
+    expect([lookup('a', '2026-10-14'), lookup('a', '2026-10-16'), lookup('a', '2026-10-17'), lookup('b', '2026-10-14')]).toEqual([12, 8, 0, 0])
   })
 })
