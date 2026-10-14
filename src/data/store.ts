@@ -1,7 +1,7 @@
 import { collection, deleteDoc, deleteField, doc, FieldPath, onSnapshot, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
 import { db } from './firebase'
 
-export type CollectionName = 'items' | 'salesWeeks' | 'counts' | 'orders' | 'scheduleChanges' | 'holidaySettings' | 'events'
+export type CollectionName = 'items' | 'salesWeeks' | 'counts' | 'orders' | 'scheduleChanges' | 'holidaySettings' | 'events' | 'promos'
 type Doc = Record<string, unknown>
 
 /**

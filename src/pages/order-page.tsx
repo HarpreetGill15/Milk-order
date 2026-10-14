@@ -1,20 +1,21 @@
-import { AlertTriangle, ChevronLeft, ChevronRight, Printer, RotateCcw, ScanBarcode } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Megaphone, Printer, RotateCcw, ScanBarcode, Undo2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Card } from '../components/button'
-import { saveItem, saveOrder } from '../data/api'
+import { markOrdered, saveItem, saveOrder } from '../data/api'
+import { OrderHints } from '../components/order-badges'
 import { DayNotes } from '../components/day-notes'
-import { useOrders, usePlanner } from '../data/hooks'
+import { usePlanner } from '../data/hooks'
 import { addDaysIso, prettyDate, todayIso } from '../lib/dates'
 import { SIZE_LABEL } from '../lib/item-filters'
 import { buildOrders, type DeliveryOrder, type OrderRow } from '../lib/order-build'
 import type { Planner } from '../lib/planner'
 import { cn } from '../lib/utils'
+import { adWeekStart } from '../lib/promos'
 import { SIZES } from '../types'
 
 export function OrderPage() {
-  const { planner, items, weeks, counts, loading } = usePlanner()
-  const { orders } = useOrders()
+  const { planner, items, weeks, counts, promos, orders, loading } = usePlanner()
   const [chosenDate, setOrderDate] = useState<string | null>(null)
   // Until the user picks a date, follow the schedule (it can change once schedule edits load).
   const orderDate = chosenDate ?? planner.schedule.nextOrderDay(todayIso())
@@ -23,14 +24,31 @@ export function OrderPage() {
   const deliveries = useMemo(() => buildOrders(items, orderDate, count, planner, orders), [items, orderDate, count, planner, orders])
   const uncounted = items.filter(item => item.active && !count?.entries[item.id]).length
 
+  const savedFor = (delivery: DeliveryOrder) => orders.find(order => order.orderDate === orderDate && order.deliveryDate === delivery.deliveryDate)
+
   const setFinal = (delivery: DeliveryOrder, row: OrderRow, value: number | null) => {
     // Only hand-edited lines are stored; everything else follows the live suggestion. `null` resets a line.
-    const existing = orders.find(order => order.orderDate === orderDate && order.deliveryDate === delivery.deliveryDate)?.lines ?? {}
-    const lines = { ...existing }
+    const saved = savedFor(delivery)
+    const lines = { ...(saved?.lines ?? {}) }
     if (value === null) delete lines[row.item.id]
     else lines[row.item.id] = { suggested: row.suggestion.suggested, final: value }
-    void saveOrder(orderDate, delivery.deliveryDate, lines)
+    // Already marked as ordered: keep the frozen quantities in step with the correction.
+    const placed = saved?.placed ? { ...saved.placed, quantities: { ...saved.placed.quantities, [row.item.id]: value ?? row.suggestion.suggested } } : undefined
+    void saveOrder(orderDate, delivery.deliveryDate, lines, placed)
   }
+
+  const allPlaced = deliveries.length > 0 && deliveries.every(delivery => delivery.placed)
+  const placeAll = () => void markOrdered(deliveries.map(delivery => ({
+    orderDate,
+    deliveryDate: delivery.deliveryDate,
+    lines: savedFor(delivery)?.lines ?? {},
+    quantities: Object.fromEntries(delivery.rows.map(row => [row.item.id, row.final])),
+  })))
+  const unplaceAll = () => deliveries.forEach(delivery => void saveOrder(orderDate, delivery.deliveryDate, savedFor(delivery)?.lines ?? {}))
+
+  // Flyer weeks touching the days these deliveries cover (ads start Thursday).
+  const flyerWeeks = [...new Set(deliveries.flatMap(delivery => delivery.coversDates.map(adWeekStart)))]
+  const flyerCount = (weekStart: string) => Object.keys(promos.find(promo => promo.weekStart === weekStart)?.items ?? {}).length
 
   if (loading) return <p className="text-slate-500">Loading…</p>
 
@@ -49,6 +67,31 @@ export function OrderPage() {
         </div>
       </div>
       <p className="text-sm text-slate-500">Delivery days changed for a holiday? Set them on the <Link className="font-semibold text-brand-600" to="/calendar">Calendar</Link> page.</p>
+
+      {deliveries.length > 0 && (
+        <div className={cn('flex flex-wrap items-center gap-3 rounded-xl p-3 text-sm', allPlaced ? 'bg-green-50 text-green-900' : 'bg-white ring-1 ring-slate-200')}>
+          {allPlaced ? (
+            <>
+              <CheckCircle2 className="h-5 w-5" />
+              <span>Marked as ordered {new Date(deliveries[0].placed!.at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}. Edits still update it.</span>
+              <Button variant="ghost" className="ml-auto min-h-9" onClick={unplaceAll}><Undo2 className="h-4 w-4" /> Undo</Button>
+            </>
+          ) : (
+            <>
+              <span>Once it's in the ordering system, mark it as ordered — the app compares it with your next count to learn what's really selling.</span>
+              <Button className="ml-auto" onClick={placeAll}><CheckCircle2 className="h-4 w-4" /> Mark as ordered</Button>
+            </>
+          )}
+        </div>
+      )}
+
+      {flyerWeeks.map(weekStart => (
+        <p key={weekStart} className="flex flex-wrap items-center gap-2 rounded-xl bg-orange-50 p-3 text-sm text-orange-900">
+          <Megaphone className="h-4 w-4" />
+          Flyer {prettyDate(weekStart)} – {prettyDate(addDaysIso(weekStart, 6))}: {flyerCount(weekStart) ? `${flyerCount(weekStart)} item${flyerCount(weekStart) === 1 ? '' : 's'} on promo` : 'no promo items set'}
+          <Link to={`/promos?week=${weekStart}`} className="ml-auto font-semibold underline">{flyerCount(weekStart) ? 'Edit' : 'Set promos'}</Link>
+        </p>
+      ))}
 
       {weeks.length === 0 && <Warning>No sales reports uploaded yet, so every forecast is 0. <Link className="font-semibold underline" to="/sales">Upload one</Link>.</Warning>}
       {!count && <Warning>No count for {prettyDate(orderDate)} yet. Suggestions assume 0 on hand until the count is done on the phone.</Warning>}
@@ -109,6 +152,7 @@ function DeliveryTable({ delivery, planner, onSetFinal }: { delivery: DeliveryOr
                     <td className="px-4 py-2">
                       <p className="font-medium">{row.item.name}</p>
                       <p className="text-xs text-slate-400">{row.item.brand} · steps of {row.item.orderStep}</p>
+                      <OrderHints row={row} />
                     </td>
                     <td className={cn('px-2 py-2 text-right tabular-nums', row.counted === null && !delivery.projected && 'text-amber-700')}>
                       {delivery.projected ? Math.round(row.suggestion.stockAtDelivery) : row.counted ?? 'not counted'}

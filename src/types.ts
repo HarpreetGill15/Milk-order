@@ -63,6 +63,19 @@ export interface SavedOrder {
   id: string
   orderDate: string
   deliveryDate: string
+  /** Hand-edited lines only; everything else follows the live suggestion. */
   lines: Record<string, OrderLine>
   savedAt: string
+  /**
+   * Set by "Mark as ordered": what was actually ordered, frozen (suggestions keep moving as counts
+   * and sales come in). Used to work out what really sold between counts.
+   */
+  placed?: { at: string; quantities: Record<string, number> }
+}
+
+/** Items in one week's flyer. Ad weeks run Thursday to Wednesday; the id is the Thursday's date. */
+export interface Promo {
+  weekStart: string
+  /** itemId → promo settings; `lift` (% more sales) overrides the learned/default lift when set. */
+  items: Record<string, { lift?: number | null }>
 }

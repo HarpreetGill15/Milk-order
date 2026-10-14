@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Barcode } from '../components/barcode'
 import { Button } from '../components/button'
-import { useOrders, usePlanner } from '../data/hooks'
+import { markOrdered } from '../data/api'
+import { PromoBadge } from '../components/order-badges'
+import { usePlanner } from '../data/hooks'
 import { prettyDate } from '../lib/dates'
 import { SIZE_LABEL } from '../lib/item-filters'
 import { buildOrders } from '../lib/order-build'
@@ -37,8 +39,7 @@ function useWakeLock() {
  */
 export function ScanPage() {
   const { orderDate = '' } = useParams()
-  const { planner, items, counts, loading } = usePlanner()
-  const { orders } = useOrders()
+  const { planner, items, counts, orders, loading } = usePlanner()
   const count = counts.find(c => c.date === orderDate)
   const deliveries = useMemo(() => buildOrders(items, orderDate, count, planner, orders), [items, orderDate, count, planner, orders])
   const [deliveryIndex, setDeliveryIndex] = useState(0)
@@ -94,7 +95,19 @@ export function ScanPage() {
           <div className="space-y-3 text-center">
             <Check className="mx-auto h-16 w-16 text-green-600" />
             <p className="text-2xl font-bold">All {lines.length} lines done</p>
-            <Button variant="secondary" onClick={() => setIndex(0)}>Start again</Button>
+            {delivery?.placed
+              ? <p className="text-sm text-green-700">Marked as ordered.</p>
+              : (
+                <Button onClick={() => void markOrdered(deliveries.map(d => ({
+                  orderDate,
+                  deliveryDate: d.deliveryDate,
+                  lines: orders.find(o => o.orderDate === orderDate && o.deliveryDate === d.deliveryDate)?.lines ?? {},
+                  quantities: Object.fromEntries(d.rows.map(row => [row.item.id, row.final])),
+                })))}>
+                  Mark as ordered
+                </Button>
+              )}
+            <div><Button variant="secondary" onClick={() => setIndex(0)}>Start again</Button></div>
           </div>
         )}
         {line && !done && (
@@ -102,6 +115,7 @@ export function ScanPage() {
             <div className="text-center">
               <p className="text-xl font-bold leading-tight">{line.item.name}</p>
               <p className="text-sm text-slate-500">{line.item.brand} · {SIZE_LABEL[line.item.size]}</p>
+              {line.promo && <span className="mt-1 inline-block"><PromoBadge promo={line.promo} /></span>}
             </div>
             {code ? <Barcode key={code} value={code} height={140} fill /> : <p className="rounded-xl bg-red-50 p-4 text-center font-semibold text-red-700">No UPC or vendor code — add it on the Items page</p>}
             <div className="text-center">

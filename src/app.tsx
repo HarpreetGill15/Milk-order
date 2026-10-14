@@ -6,6 +6,7 @@ import { HomePage } from './pages/home-page'
 import { ItemsPage } from './pages/items-page'
 import { OrderPage } from './pages/order-page'
 import { PrintPage } from './pages/print-page'
+import { PromosPage } from './pages/promos-page'
 import { SalesPage } from './pages/sales-page'
 import { ScanPage } from './pages/scan-page'
 
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="/sales" element={<SalesPage />} />
         <Route path="/items" element={<ItemsPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/promos" element={<PromosPage />} />
       </Route>
     </Routes>
   )

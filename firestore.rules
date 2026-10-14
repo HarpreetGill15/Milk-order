@@ -28,6 +28,10 @@ service cloud.firestore {
       allow read, delete: if true;
       allow create, update: if request.resource.data.id == id && request.resource.data.days is map;
     }
+    match /promos/{weekStart} {
+      allow read, delete: if true;
+      allow create, update: if request.resource.data.weekStart == weekStart && request.resource.data.items is map;
+    }
     match /events/{id} {
       allow read, delete: if true;
       allow create, update: if request.resource.data.id == id && request.resource.data.name is string

@@ -47,6 +47,26 @@ order             = forecast(days until the next delivery) + safety stock − st
 
 Uncounted items are treated as 0 on hand and flagged on the order screen.
 
+### Promos (`src/lib/promos.ts`)
+
+Flyer weeks run **Thursday to Wednesday**. On the **Promos** page, tick the items in a week's flyer.
+Their forecast on those days is raised by the promo lift: a number you type for that item, else what
+that item sold on its past promos, else the average across all past promos, else a starting
+guess of +50%. Lifts are learned from flyer weeks that are ticked here *and* have sales uploaded.
+Promo days are kept out of normal-day averages, like holidays.
+
+### Learning from previous orders (`src/lib/trend.ts`)
+
+**Mark as ordered** (Order page, or at the end of scan mode) freezes what was actually ordered.
+Between two counts, what left the cooler is `earlier count + deliveries in between − later count`
+(the morning count comes before that day's delivery). Compared with the forecast for those days,
+that shows whether an item is selling faster or slower than the sales history says, and it
+counts spoilage too, since that stock also has to be re-ordered. Over the last 6 such stretches (each
+up to 4 days long, with every delivery in between marked as ordered), the ratio is capped to
+0.6–1.6 and pulled toward 1 when there are few stretches; the item's forecasts are multiplied by it.
+
+Each order row also shows what was ordered last time for a delivery on the same weekday.
+
 ## Screens
 
 - **Count** (phone): one-item-at-a-time view with a progress bar, crates and units fields with −/+,
@@ -56,6 +76,7 @@ Uncounted items are treated as 0 on hand and flagged on the order screen.
   are saved; the reset icon returns a line to the suggestion.
 - **Print**: order sheet grouped by size with a barcode and quantity per item. Choose whether the
   barcode is the UPC or the vendor code.
+- **Promos**: pick a flyer week, tick the items on promo, optionally set a lift per item.
 - **Calendar**: delivery days for the next 3 weeks (add / remove / change order day), Ontario
   holidays (open/closed, milk and cream boosts and where each number came from), special events.
 - **Sales**: upload BDMS "Item Sales by Vendor 7 Days" reports (PDF or Excel, many weeks at once), or any file with

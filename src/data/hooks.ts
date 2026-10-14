@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { CustomEvent, HolidaySetting } from '../lib/holidays'
 import { createPlanner } from '../lib/planner'
 import type { ScheduleChange } from '../lib/schedule'
-import type { Count, Item, SalesWeek, SavedOrder } from '../types'
+import type { Count, Item, Promo, SalesWeek, SavedOrder } from '../types'
 import { store, type CollectionName } from './store'
 
 function useCollection<T>(name: CollectionName): { data: T[]; loading: boolean } {
@@ -50,7 +50,12 @@ export function useEvents() {
   return { events, loading }
 }
 
-/** Everything the order math needs: items, history, counts, schedule changes and holidays. */
+export function usePromos() {
+  const { data, loading } = useCollection<Promo>('promos')
+  return { promos: data, loading }
+}
+
+/** Everything the order math needs: items, history, counts, schedule changes, holidays, promos and past orders. */
 export function usePlanner() {
   const { items, loading: itemsLoading } = useItems()
   const { weeks, loading: weeksLoading } = useSalesWeeks()
@@ -58,10 +63,12 @@ export function usePlanner() {
   const { changes, loading: changesLoading } = useScheduleChanges()
   const { holidaySettings, loading: settingsLoading } = useHolidaySettings()
   const { events, loading: eventsLoading } = useEvents()
+  const { promos, loading: promosLoading } = usePromos()
+  const { orders, loading: ordersLoading } = useOrders()
   const planner = useMemo(
-    () => createPlanner({ items, weeks, counts, changes, holidaySettings, events }),
-    [items, weeks, counts, changes, holidaySettings, events],
+    () => createPlanner({ items, weeks, counts, changes, holidaySettings, events, promos, orders }),
+    [items, weeks, counts, changes, holidaySettings, events, promos, orders],
   )
-  const loading = itemsLoading || weeksLoading || countsLoading || changesLoading || settingsLoading || eventsLoading
-  return { planner, items, weeks, counts, loading }
+  const loading = itemsLoading || weeksLoading || countsLoading || changesLoading || settingsLoading || eventsLoading || promosLoading || ordersLoading
+  return { planner, items, weeks, counts, promos, orders, loading }
 }

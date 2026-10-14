@@ -63,7 +63,7 @@ export function PrintPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold leading-tight">{row.item.name}</p>
-                        <p className="text-xs text-slate-600">{row.item.brand}</p>
+                        <p className="text-xs text-slate-600">{row.item.brand}{row.promo && <b className="ml-2 border border-black px-1 text-[10px] uppercase">Promo</b>}</p>
                       </div>
                       <p className="w-20 text-right text-3xl font-bold tabular-nums">{row.final}</p>
                     </div>

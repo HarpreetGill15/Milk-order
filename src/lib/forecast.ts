@@ -14,6 +14,8 @@ export interface ForecastContext {
   isAffected: (date: string) => boolean
   /** The morning count showed none on the shelf, so that day's sales say nothing about demand. */
   wasOutOfStock: (itemId: string, date: string) => boolean
+  /** The item was in the flyer that day — promo sales aren't normal sales. */
+  isPromo?: (itemId: string, date: string) => boolean
 }
 
 export function outOfStockLookup(counts: Count[]) {
@@ -27,8 +29,8 @@ export function outOfStockLookup(counts: Count[]) {
 /**
  * Normal-day forecast for `date`: the same weekday from the nearest weeks (at most
  * FORECAST_SAMPLES, within FORECAST_WINDOW_DAYS), nearer weeks weighted more. Skips days that were
- * holidays/events, sold out, or not over when the report was pulled. With 5+ samples the single
- * highest and lowest are dropped so one odd day can't swing the order.
+ * holidays/events, promo days for the item, sold out, or not over when the report was pulled.
+ * With 5+ samples the single highest and lowest are dropped so one odd day can't swing the order.
  */
 export function forecastBase(itemId: string, date: string, ctx: ForecastContext): number {
   const weekday = dayOfWeek(date)
@@ -38,7 +40,7 @@ export function forecastBase(itemId: string, date: string, ctx: ForecastContext)
     const sampleDate = addDaysIso(week.weekStart, weekday)
     const distance = Math.abs(differenceInCalendarDays(fromIso(sampleDate), fromIso(date)))
     if (distance === 0 || distance > FORECAST_WINDOW_DAYS) continue
-    if (ctx.isAffected(sampleDate) || ctx.wasOutOfStock(itemId, sampleDate)) continue
+    if (ctx.isAffected(sampleDate) || ctx.wasOutOfStock(itemId, sampleDate) || ctx.isPromo?.(itemId, sampleDate)) continue
     const row = week.rows.find(r => r.itemId === itemId)
     if (row) samples.push({ distance, value: row.days[weekday] })
   }
