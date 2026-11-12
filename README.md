@@ -120,8 +120,9 @@ discontinued lines are unticked by default.
 Vercel environment variables:
 
 - `ANTHROPIC_API_KEY`: required for photo reading (from console.anthropic.com).
-- `PHOTO_PIN`: optional, but recommended. With it set, the app asks for this PIN once per device
-  before reading photos, so someone else with the link can't spend API credit.
+- `PHOTO_PIN`: required for photo reading (4+ digits, not the store number). The app asks for
+  this PIN once per device before reading photos, so someone else with the link can't spend API
+  credit. Without it, photo reading stays off.
 
 ## Scan mode (phone)
 
