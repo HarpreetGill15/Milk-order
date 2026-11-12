@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto'
 import Anthropic from '@anthropic-ai/sdk'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
@@ -5,8 +6,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
  * POST { image: base64 JPEG/PNG/WebP, mediaType } → the report rows Claude reads off a photo of
  * the BDMS screen. Server-side so the Anthropic API key never reaches the phone.
  *
- * Env: ANTHROPIC_API_KEY (required). PHOTO_PIN (optional): when set, requests must send the same
- * value in the `x-photo-pin` header, so a stranger with the app link can't spend API credit.
+ * Env: ANTHROPIC_API_KEY and PHOTO_PIN (both required). Requests must send PHOTO_PIN in the
+ * `x-photo-pin` header, so a stranger with the app link can't spend API credit. Without PHOTO_PIN
+ * the endpoint refuses to run at all.
  */
 
 const nullable = (type: 'string' | 'integer') => ({ anyOf: [{ type }, { type: 'null' }] })
@@ -62,8 +64,11 @@ type MediaType = (typeof MEDIA_TYPES)[number]
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST' })
   if (!process.env.ANTHROPIC_API_KEY) return res.status(501).json({ error: 'Photo reading is not set up yet: add ANTHROPIC_API_KEY in the Vercel project settings.' })
-  const pin = process.env.PHOTO_PIN
-  if (pin && req.headers['x-photo-pin'] !== pin) return res.status(401).json({ error: 'Wrong or missing store PIN.' })
+  const pin = process.env.PHOTO_PIN ?? ''
+  if (pin.length < 4) return res.status(501).json({ error: 'Photo reading is not set up yet: add PHOTO_PIN (4+ digits) in the Vercel project settings.' })
+  const sent = Buffer.from(String(req.headers['x-photo-pin'] ?? ''))
+  const want = Buffer.from(pin)
+  if (sent.length !== want.length || !timingSafeEqual(sent, want)) return res.status(401).json({ error: 'Wrong or missing store PIN.' })
 
   const { image, mediaType } = (req.body ?? {}) as { image?: unknown; mediaType?: unknown }
   if (typeof image !== 'string' || image.length < 100 || image.length > 6_000_000 || !/^[A-Za-z0-9+/=]+$/.test(image)) {
