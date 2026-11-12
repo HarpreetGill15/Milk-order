@@ -14,7 +14,7 @@
     "@anthropic-ai/sdk": "^0.133.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
-    "firebase": "^11.10.0",
+    "firebase": "^13.2.0",
     "jsbarcode": "^3.12.3",
     "lucide-react": "^0.475.0",
     "pdfjs-dist": "^4.0.379",
